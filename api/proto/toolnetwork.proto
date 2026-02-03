@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package toolnetwork;
+
+option go_package = "github.com/AgentNetworkPlan/AgentNetwork/api/proto";
+
+// ToolNetwork 工具网络服务
+service ToolNetwork {
+    // 获取节点列表
+    rpc GetNodeList(NodeFilter) returns (NodeList);
+    // 获取节点信息
+    rpc GetNodeInfo(NodeInfoRequest) returns (NodeInfoResponse);
+    // 发送任务
+    rpc SendTask(TaskRequest) returns (TaskResponse);
+    // 存储数据
+    rpc StoreData(DataRequest) returns (StoreResponse);
+    // 获取数据
+    rpc FetchData(FetchRequest) returns (FetchResponse);
+    // 心跳
+    rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+// NodeFilter 节点过滤器
+message NodeFilter {
+    repeated string capabilities = 1;  // 按能力过滤
+    string status = 2;                  // 按状态过滤: online, offline, busy
+    string region = 3;                  // 按地域过滤
+    int32 limit = 4;                    // 返回数量限制
+}
+
+// NodeList 节点列表
+message NodeList {
+    repeated NodeInfo nodes = 1;
+    int32 total = 2;
+}
+
+// NodeInfo 节点信息
+message NodeInfo {
+    string node_id = 1;
+    string peer_id = 2;
+    repeated string addresses = 3;
+    string status = 4;
+    repeated string capabilities = 5;
+    int64 connected_at = 6;
+    int64 last_seen = 7;
+}
+
+// NodeInfoRequest 节点信息请求
+message NodeInfoRequest {
+    string node_id = 1;
+}
+
+// NodeInfoResponse 节点信息响应
+message NodeInfoResponse {
+    NodeInfo node = 1;
+    bool found = 2;
+}
+
+// TaskRequest 任务请求
+message TaskRequest {
+    string task_id = 1;
+    string task_type = 2;
+    bytes payload = 3;
+    string target_node = 4;     // 目标节点 ID，为空则自动选择
+    int64 timeout_ms = 5;
+}
+
+// TaskResponse 任务响应
+message TaskResponse {
+    string task_id = 1;
+    bool success = 2;
+    bytes result = 3;
+    string error = 4;
+    string executed_by = 5;     // 执行节点 ID
+    int64 duration_ms = 6;
+}
+
+// DataRequest 数据存储请求
+message DataRequest {
+    string key = 1;
+    bytes value = 2;
+    int64 ttl_seconds = 3;      // 过期时间，0 表示永不过期
+}
+
+// StoreResponse 存储响应
+message StoreResponse {
+    bool success = 1;
+    string key = 2;
+    string error = 3;
+}
+
+// FetchRequest 数据获取请求
+message FetchRequest {
+    string key = 1;
+}
+
+// FetchResponse 获取响应
+message FetchResponse {
+    bool found = 1;
+    bytes value = 2;
+    string error = 3;
+}
+
+// HeartbeatRequest 心跳请求
+message HeartbeatRequest {
+    string node_id = 1;
+    string status = 2;
+    repeated string capabilities = 3;
+    int64 timestamp = 4;
+}
+
+// HeartbeatResponse 心跳响应
+message HeartbeatResponse {
+    bool success = 1;
+    int64 server_time = 2;
+}

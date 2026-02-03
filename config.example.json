@@ -1,0 +1,22 @@
+{
+  "agent_id": "",
+  "version": "0.1.0",
+  "base_dir": ".",
+  "private_key_path": "keys/private.pem",
+  "public_key_path": "keys/public.pem",
+  "key_algorithm": "sm2",
+  "network": {
+    "listen_addr": ":8080",
+    "bootstrap_nodes": [
+      "bootstrap1.daan.network:8080",
+      "bootstrap2.daan.network:8080"
+    ],
+    "enable_dht": true
+  },
+  "github": {
+    "token": "",
+    "owner": "AgentNetworkPlan",
+    "repo": "AgentNetwork",
+    "keys_path": "registry/keys"
+  }
+}
