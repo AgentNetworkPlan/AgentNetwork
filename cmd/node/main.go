@@ -12,6 +12,7 @@ import (
 
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/api/server"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/daemon"
+	"github.com/AgentNetworkPlan/AgentNetwork/internal/httpapi"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/p2p/host"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/p2p/node"
 )
@@ -326,6 +327,20 @@ func runNode(cf *commonFlags, d *daemon.Daemon) {
 		fmt.Fprintf(os.Stderr, "启动 gRPC 服务失败: %v\n", err)
 	}
 
+	// 启动 HTTP API 服务
+	httpConfig := httpapi.DefaultConfig(n.Host().ID().String())
+	httpConfig.ListenAddr = cf.httpAddr
+	httpServer, err := httpapi.NewServer(httpConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "创建 HTTP 服务失败: %v\n", err)
+	} else {
+		if err := httpServer.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "启动 HTTP 服务失败: %v\n", err)
+		} else {
+			fmt.Printf("HTTP API 服务已启动: %s\n", cf.httpAddr)
+		}
+	}
+
 	// 获取节点信息
 	nodeID := n.Host().ID().String()
 	listenAddrs := make([]string, 0)
@@ -384,6 +399,9 @@ func runNode(cf *commonFlags, d *daemon.Daemon) {
 	d.Cleanup()
 
 	// 停止服务
+	if httpServer != nil {
+		httpServer.Stop()
+	}
 	grpcServer.Stop()
 	n.Stop()
 

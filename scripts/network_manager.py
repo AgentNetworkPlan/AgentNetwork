@@ -200,11 +200,22 @@ def start_node(node: NodeConfig, binary_path: str) -> Optional[subprocess.Popen]
         log(f"HTTP端口 {node.http_port} 已被占用", "ERROR")
         return None
     
-    # 构建启动命令
+    # 构建启动命令 - 使用新的守护进程命令
     cmd = [
         binary_path,
-        "--config", config_path,
+        "start",  # 使用 start 命令（守护进程模式）
+        "-data", node.data_dir,
+        "-listen", f"/ip4/0.0.0.0/tcp/{node.p2p_port}",
+        "-http", f":{node.http_port}",
     ]
+    
+    # 添加引导节点
+    if node.bootstrap:
+        cmd.extend(["-bootstrap", node.bootstrap])
+    
+    # 创世节点设置角色
+    if node.is_genesis:
+        cmd.extend(["-role", "bootstrap"])
     
     # 打开日志文件
     ensure_dir(log_file.parent)

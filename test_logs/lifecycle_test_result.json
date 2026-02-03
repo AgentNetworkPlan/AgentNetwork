@@ -1,0 +1,121 @@
+{
+  "timestamp": "2026-02-03T20:27:08.387678",
+  "duration": 19.375769,
+  "total": 16,
+  "passed": 16,
+  "failed": 0,
+  "results": [
+    {
+      "name": "编译项目",
+      "passed": true,
+      "duration": 2.997012138366699,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "启动创世节点",
+      "passed": true,
+      "duration": 3.1614081859588623,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "创世节点信息",
+      "passed": true,
+      "duration": 0.0013172626495361328,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "节点加入网络",
+      "passed": true,
+      "duration": 8.111197710037231,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "节点发现",
+      "passed": true,
+      "duration": 5.005273818969727,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "邻居管理",
+      "passed": true,
+      "duration": 0.02092766761779785,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "消息发送",
+      "passed": true,
+      "duration": 0.0009653568267822266,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "邮箱功能",
+      "passed": true,
+      "duration": 0.012355804443359375,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "公告板",
+      "passed": true,
+      "duration": 0.001894235610961914,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "声誉系统",
+      "passed": true,
+      "duration": 0.002268552780151367,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "指责系统",
+      "passed": true,
+      "duration": 0.0008852481842041016,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "投票系统",
+      "passed": true,
+      "duration": 0.0008618831634521484,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "超级节点",
+      "passed": true,
+      "duration": 0.02198338508605957,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "激励系统",
+      "passed": true,
+      "duration": 0.015897274017333984,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "日志系统",
+      "passed": true,
+      "duration": 1.9073486328125e-06,
+      "message": "",
+      "details": {}
+    },
+    {
+      "name": "错误处理",
+      "passed": true,
+      "duration": 0.014313697814941406,
+      "message": "",
+      "details": {}
+    }
+  ]
+}
