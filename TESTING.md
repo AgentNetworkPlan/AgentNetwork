@@ -179,15 +179,98 @@ python scripts/api_test.py
 ### 多节点网络测试
 
 ```bash
-# 集成测试（模拟完整网络）
-go test -v ./test/integration/...
+# 基础网络模拟（8个节点）
+go test -v ./test/integration/ -run TestNetworkSimulation
+
+# 增强版协作测试（6个节点 + HTTP API测试）
+go test -v ./test/integration/ -run TestEnhancedNetworkBehaviors
+
+# 网络可扩展性测试（10个节点）
+go test -v ./test/integration/ -run TestNetworkScalability
+
+# API接口覆盖完整性评估
+go test -v ./test/integration/ -run TestAPICompleteness
 ```
 
-测试场景包括：
+### 测试场景
+
+#### 基础网络模拟 (TestNetworkSimulation)
 - 节点加入/退出
-- 网络分区恢复
-- 消息传播延迟
-- 节点故障容错
+- P2P 连接建立
+- DHT 节点发现
+- 网络稳定性监控
+
+#### 增强版协作测试 (TestEnhancedNetworkBehaviors)
+包含 **10+ 核心行为场景**：
+
+1. **节点与HTTP API启动**
+   - ✅ 引导节点 + HTTP API
+   - ✅ 普通节点 + HTTP API服务器
+
+2. **节点信息API** (4个接口)
+   - ✅ 健康检查 `/health`
+   - ✅ 节点状态 `/status`
+   - ✅ 节点信息 `/api/v1/node/info`
+   - ✅ 对等节点列表 `/api/v1/node/peers`
+
+3. **邻居管理API** (2个接口)
+   - ✅ 邻居列表 `/api/v1/neighbor/list`
+   - ✅ 最佳邻居 `/api/v1/neighbor/best`
+
+4. **消息传递**
+   - ✅ 节点间消息发送
+   - ✅ 消息元数据传递
+
+5. **邮箱系统API** (2个接口)
+   - ✅ 收件箱查询
+   - ✅ 发件箱查询
+
+6. **任务系统API** (2个接口)
+   - ✅ 任务创建
+   - ✅ 任务列表查询
+
+7. **信誉系统API** (2个接口)
+   - ✅ 信誉查询
+   - ✅ 信誉排名
+
+8. **公告板API** (2个接口)
+   - ✅ 公告发布
+   - ✅ 公告搜索
+
+9. **投票系统API**
+   - ✅ 提案列表查询
+
+10. **网络拓扑验证**
+    - ✅ 连接数统计
+    - ✅ 平均连接度分析
+
+#### API覆盖完整性评估 (TestAPICompleteness)
+
+全面评估 **65+ HTTP API接口**覆盖情况：
+
+| 模块 | 接口数 | 说明 |
+|------|-------|------|
+| 节点管理 | 5 | info, peers, register, health, status |
+| 邻居管理 | 5 | list, best, add, remove, ping |
+| 消息传递 | 2 | send, receive |
+| 邮箱系统 | 6 | send, inbox, outbox, read, mark-read, delete |
+| 公告板 | 8 | publish, get, search, subscribe, revoke |
+| 任务系统 | 5 | create, status, accept, submit, list |
+| 信誉系统 | 4 | query, update, ranking, history |
+| 指控系统 | 4 | create, list, detail, analyze |
+| 激励机制 | 4 | award, propagate, history, tolerance |
+| 投票治理 | 5 | create, list, vote, finalize |
+| 超级节点 | 4 | list, candidates, apply, heartbeat |
+| 存储系统 | 5 | put, get, delete, list, has |
+| 日志系统 | 2 | tail, stream |
+
+**当前覆盖率**: 16/65 核心接口 (~25%)
+
+**未覆盖核心接口**:
+- 存储系统 (put/get/delete)
+- 指控系统 (create/list)
+- 投票治理 (vote/finalize)
+- 超级节点管理
 
 ---
 
