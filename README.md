@@ -133,38 +133,105 @@ service ToolNetwork {
 
 AgentNetwork 包含完整的三层测试体系（单元测试、集成测试、网络模拟）。
 
-### 快速测试
+### 1️⃣ 单元测试（Go）
 
 ```bash
-# 运行所有单元测试
+# 运行所有单元测试（26+ 模块，200+ 用例）
 go test -v ./...
 
-# 运行生命周期集成测试（16 个场景）
-python scripts/lifecycle_test.py
+# 运行特定模块测试
+go test -v ./internal/p2p/identity/...     # 节点身份
+go test -v ./internal/p2p/host/...         # libp2p 主机
+go test -v ./internal/storage/...          # 存储模块
+go test -v ./internal/daemon/...           # 守护进程
 
 # 生成覆盖率报告
 go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
+go tool cover -html=coverage.out -o coverage.html
+
+# 在浏览器中查看
+start coverage.html  # Windows
 ```
 
-### 核心模块测试
+### 2️⃣ 集成测试（Python）
 
 ```bash
-# P2P 网络
-go test -v ./internal/p2p/identity/...
-go test -v ./internal/p2p/host/...
-go test -v ./internal/p2p/node/...
+# 生命周期测试（16 个场景，5 节点）
+python scripts/lifecycle_test.py
 
-# 存储与通信
-go test -v ./internal/storage/...
-go test -v ./internal/network/...
+# 自定义节点数量
+python scripts/lifecycle_test.py -n 10
 
-# 信誉与治理
-go test -v ./internal/reputation/...
-go test -v ./internal/accusation/...
+# 跳过编译（使用已有二进制）
+python scripts/lifecycle_test.py --skip-build
+
+# 保留日志文件用于调试
+python scripts/lifecycle_test.py --keep-logs
+
+# 详细输出
+python scripts/lifecycle_test.py -v
 ```
 
-**📖 详细测试指南**: [TESTING.md](TESTING.md)
+**生命周期测试涵盖**：
+- ✅ 节点启动与健康检查
+- ✅ DHT 节点发现
+- ✅ 数据存储与获取
+- ✅ 任务创建与执行
+- ✅ 信誉查询与更新
+- ✅ 指控提交与传播
+- ✅ 优雅关闭与日志收集
+
+### 3️⃣ 网络模拟测试（Go）
+
+```bash
+# 基础网络模拟（8 节点）
+go test -v ./test/integration/ -run TestNetworkSimulation
+
+# 增强版协作测试（6 节点 + HTTP API，85.7% 通过率）
+go test -v ./test/integration/ -run TestEnhancedNetworkBehaviors
+
+# 可扩展性测试（10 节点）
+go test -v ./test/integration/ -run TestNetworkScalability
+
+# API 接口覆盖分析（59 个接口）
+go test -v ./test/integration/ -run TestAPICompleteness
+```
+
+**增强版测试涵盖**：
+- ✅ 节点信息 API (health, status, info, peers)
+- ✅ 邻居管理 API (list, best)
+- ✅ 消息传递 API (send)
+- ✅ 邮箱系统 API (inbox, outbox)
+- ✅ 任务系统 API (create, list)
+- ✅ 信誉系统 API (query, ranking)
+- ✅ 公告板 API (publish, search)
+- ✅ 投票系统 API (proposal list)
+- ✅ 网络拓扑验证（平均 6.00 连接/节点）
+
+### 📊 测试统计
+
+| 测试类型 | 数量 | 状态 | 覆盖率 |
+|---------|------|------|--------|
+| Go 单元测试 | 26+ 模块 | ✅ 全部通过 | - |
+| 生命周期场景 | 16 场景 | ✅ 全部通过 | 100% |
+| 网络协作测试 | 14 API测试 | ✅ 12/14 通过 | 85.7% |
+| HTTP API 接口 | 59 接口 | ⚠️ 16/59 测试 | 27.1% |
+
+### 🐛 测试失败排查
+
+```bash
+# 如果端口被占用
+taskkill /F /IM agentnetwork*.exe  # Windows
+pkill -9 agentnetwork              # Linux/macOS
+
+# 清理测试数据
+rm -rf test_data/ test_logs_*/
+
+# 详细日志模式
+go test -v -run TestSpecificCase ./internal/module/...
+```
+
+**📖 完整测试指南**: [TESTING.md](TESTING.md) - 包含调试技巧、最佳实践和常见问题
 
 ---
 
