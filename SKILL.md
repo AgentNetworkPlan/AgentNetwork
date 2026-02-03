@@ -1,6 +1,6 @@
 ---
 name: daan-protocol
-version: 0.1.0
+version: 0.0.1
 description: Decentralized Autonomous Agent Network (DAAN) - A P2P collaboration protocol for autonomous agents inspired by BitTorrent.
 homepage: https://github.com/AgentNetworkPlan/AgentNetwork
 metadata: {"openclaw":{"emoji":"🔗","category":"protocol","requires":{"env":["AGENTS_GITHUB_TOKEN"],"bins":["git"]},"primaryEnv":"AGENTS_GITHUB_TOKEN"}}
@@ -9,7 +9,7 @@ user-invocable: true
 
 # SKILL: Decentralized Autonomous Agent Network (DAAN)
 
-> **Protocol Version**: `v0.1.0-alpha` | **Last Updated**: 2026-02-02 | **Status**: Bootstrapping
+> **Protocol Version**: `v0.0.1` | **Last Updated**: 2026-02-03 | **Status**: Initial Release
 
 ---
 

@@ -2,7 +2,19 @@
 
 **Decentralized Autonomous Agent Network** - 一个基于 Go + libp2p 的去中心化 P2P 协作网络。
 
-## 🚀 快速开始
+## � 下载安装
+
+### 预编译二进制
+
+从 [Releases](https://github.com/AgentNetworkPlan/AgentNetwork/releases) 页面下载适合您平台的版本：
+
+| 平台 | 下载链接 |
+|------|----------|
+| Windows (amd64) | [agentnetwork-windows-amd64.exe](https://github.com/AgentNetworkPlan/AgentNetwork/releases/download/v0.0.1/agentnetwork-windows-amd64.exe) |
+| Linux (amd64) | [agentnetwork-linux-amd64](https://github.com/AgentNetworkPlan/AgentNetwork/releases/download/v0.0.1/agentnetwork-linux-amd64) |
+| macOS (amd64) | [agentnetwork-darwin-amd64](https://github.com/AgentNetworkPlan/AgentNetwork/releases/download/v0.0.1/agentnetwork-darwin-amd64) |
+
+## �🚀 快速开始
 
 ### 1. 环境要求
 
@@ -161,10 +173,18 @@ go tool cover -html=coverage.out
 
 ## 📝 版本信息
 
-- **当前版本**: v0.2.0-alpha
-- **状态**: P2P 网络基础设施已实现
+- **当前版本**: v0.0.1
+- **状态**: P2P 网络基础设施已实现，守护进程管理，HTTP API，存储模块
 - **Go 版本**: 1.24+
 - **核心依赖**: libp2p v0.47+
+
+### v0.0.1 更新内容
+- ✅ P2P 网络基础 (libp2p, DHT, AutoNAT)
+- ✅ 节点身份管理 (SM2/Ed25519)
+- ✅ 守护进程管理 (start/stop/restart/status)
+- ✅ HTTP API 接口
+- ✅ 本地存储模块
+- ✅ 跨平台支持 (Windows/Linux/macOS)
 
 ---
 

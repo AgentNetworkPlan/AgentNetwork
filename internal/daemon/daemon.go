@@ -10,10 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -155,13 +153,8 @@ func (d *Daemon) fork() error {
 	cmd.Stderr = logFile
 	cmd.Env = append(os.Environ(), DaemonEnvKey+"=1")
 
-	// Windows 特殊处理
-	if runtime.GOOS == "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			// Windows 下创建新进程组
-			CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
-		}
-	}
+	// 设置平台特定的进程属性
+	setSysProcAttr(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("启动子进程失败: %w", err)
@@ -196,36 +189,22 @@ func (d *Daemon) Stop() error {
 		return errors.New("节点未在运行")
 	}
 
-	// 发送停止信号
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return fmt.Errorf("查找进程失败: %w", err)
+	// 发送停止信号（平台特定）
+	if err := sendStopSignal(pid); err != nil {
+		return fmt.Errorf("发送停止信号失败: %w", err)
 	}
 
-	// 发送信号
-	if runtime.GOOS == "windows" {
-		// Windows 下直接终止进程
-		if err := process.Kill(); err != nil {
-			return fmt.Errorf("终止进程失败: %w", err)
+	// 等待进程退出（最多10秒）
+	for i := 0; i < 100; i++ {
+		if _, running := d.IsRunning(); !running {
+			break
 		}
-	} else {
-		// Unix 下发送 SIGTERM
-		if err := process.Signal(syscall.SIGTERM); err != nil {
-			return fmt.Errorf("发送停止信号失败: %w", err)
-		}
+		time.Sleep(100 * time.Millisecond)
+	}
 
-		// 等待进程退出（最多10秒）
-		for i := 0; i < 100; i++ {
-			if _, running := d.IsRunning(); !running {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		// 如果还在运行，强制终止
-		if _, running := d.IsRunning(); running {
-			process.Signal(syscall.SIGKILL)
-		}
+	// 如果还在运行，强制终止
+	if _, running := d.IsRunning(); running {
+		sendForceStopSignal(pid)
 	}
 
 	// 清理PID文件
@@ -260,24 +239,9 @@ func (d *Daemon) IsRunning() (int, bool) {
 		return 0, false
 	}
 
-	// 检查进程是否存在
-	process, err := os.FindProcess(pid)
-	if err != nil {
+	// 使用平台特定的方式检查进程是否存在
+	if !isProcessRunning(pid) {
 		return pid, false
-	}
-
-	// Unix 下发送信号0检查进程是否存在
-	if runtime.GOOS != "windows" {
-		if err := process.Signal(syscall.Signal(0)); err != nil {
-			return pid, false
-		}
-	} else {
-		// Windows 下尝试打开进程
-		handle, err := syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
-		if err != nil {
-			return pid, false
-		}
-		syscall.CloseHandle(handle)
 	}
 
 	return pid, true

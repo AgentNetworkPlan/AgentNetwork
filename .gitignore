@@ -1,5 +1,6 @@
 # 二进制文件
 build/
+dist/
 *.exe
 *.exe~
 *.dll
@@ -40,6 +41,7 @@ logs/
 # 临时文件
 tmp/
 temp/
+test_logs
 
 # 心跳记录（可选）
 # heartbeats/
