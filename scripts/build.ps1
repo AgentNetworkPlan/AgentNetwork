@@ -11,6 +11,8 @@ param(
     [switch]$MacOS,         # 仅编译 macOS
     [switch]$Clean,         # 清理构建目录
     [switch]$Push,          # 提交并推送到 GitHub
+    [switch]$Release,       # 创建 GitHub Release
+    [string]$Version = "",  # 版本号 (用于 Release)
     [string]$Message = "",  # 提交信息
     [switch]$Help           # 显示帮助
 )
@@ -49,6 +51,8 @@ DAAN 构建脚本
   -MacOS        仅编译 macOS (amd64 + arm64)
   -Clean        清理构建目录
   -Push         提交并推送到 GitHub
+  -Release      创建 GitHub Release (需要先编译)
+  -Version      指定版本号 (如 v0.1.0)
   -Message      Git 提交信息 (与 -Push 一起使用)
   -Help         显示帮助
 
@@ -58,6 +62,7 @@ DAAN 构建脚本
   .\scripts\build.ps1 -Linux -MacOS           # 编译 Linux 和 macOS
   .\scripts\build.ps1 -Clean                  # 清理构建目录
   .\scripts\build.ps1 -Push -Message "feat: xxx"  # 提交并推送
+  .\scripts\build.ps1 -All -Release -Version v0.1.0  # 编译并发布
 
 输出目录: $BUILD_DIR/
 "@
@@ -178,6 +183,95 @@ function Git-Push {
     }
 }
 
+function Create-Release {
+    param([string]$ReleaseVersion)
+    
+    Write-Host "`n🚀 创建 GitHub Release..." -ForegroundColor Magenta
+    
+    # 检查 gh 命令
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+        Write-Host "❌ 未找到 gh 命令，请先安装 GitHub CLI" -ForegroundColor Red
+        Write-Host "   安装: https://cli.github.com/" -ForegroundColor Yellow
+        return
+    }
+    
+    # 检查构建目录
+    if (-not (Test-Path $BUILD_DIR) -or (Get-ChildItem $BUILD_DIR).Count -eq 0) {
+        Write-Host "❌ 构建目录为空，请先运行 -All 编译" -ForegroundColor Red
+        return
+    }
+    
+    # 确定版本号
+    if (-not $ReleaseVersion) {
+        $ReleaseVersion = "v$VERSION"
+    }
+    if (-not $ReleaseVersion.StartsWith("v")) {
+        $ReleaseVersion = "v$ReleaseVersion"
+    }
+    
+    Write-Host "📦 版本: $ReleaseVersion" -ForegroundColor Cyan
+    
+    # 获取构建产物
+    $assets = Get-ChildItem $BUILD_DIR | ForEach-Object { $_.FullName }
+    $assetCount = $assets.Count
+    
+    Write-Host "📁 上传 $assetCount 个文件..." -ForegroundColor Cyan
+    
+    # 生成 Release Notes
+    $releaseNotes = @"
+## DAAN $ReleaseVersion
+
+### 下载
+
+| 平台 | 架构 | 文件 |
+|:-----|:-----|:-----|
+| Windows | amd64 | agentnetwork-windows-amd64.exe |
+| Windows | arm64 | agentnetwork-windows-arm64.exe |
+| Linux | amd64 | agentnetwork-linux-amd64 |
+| Linux | arm64 | agentnetwork-linux-arm64 |
+| macOS | amd64 | agentnetwork-darwin-amd64 |
+| macOS | arm64 | agentnetwork-darwin-arm64 |
+
+### 使用方法
+
+``````bash
+# 下载后添加执行权限 (Linux/macOS)
+chmod +x agentnetwork-*
+
+# 初始化并启动
+./agentnetwork config init
+./agentnetwork keygen
+./agentnetwork start
+
+# 查看帮助
+./agentnetwork -h
+``````
+"@
+    
+    # 创建 Release
+    Write-Host "`n🔄 创建 Release $ReleaseVersion ..." -ForegroundColor Cyan
+    
+    $releaseArgs = @(
+        "release", "create", $ReleaseVersion,
+        "--title", "DAAN $ReleaseVersion",
+        "--notes", $releaseNotes
+    )
+    
+    # 添加所有资产文件
+    foreach ($asset in $assets) {
+        $releaseArgs += $asset
+    }
+    
+    & gh @releaseArgs
+    
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "`n✅ Release $ReleaseVersion 发布成功!" -ForegroundColor Green
+        Write-Host "🔗 https://github.com/AgentNetworkPlan/AgentNetwork/releases/tag/$ReleaseVersion" -ForegroundColor Cyan
+    } else {
+        Write-Host "❌ Release 创建失败" -ForegroundColor Red
+    }
+}
+
 # =============================================================================
 # 主逻辑
 # =============================================================================
@@ -194,6 +288,11 @@ if ($Clean) {
 
 if ($Push) {
     Git-Push -CommitMessage $Message
+    exit 0
+}
+
+if ($Release) {
+    Create-Release -ReleaseVersion $Version
     exit 0
 }
 
