@@ -1,6 +1,10 @@
 # DAAN Protocol - Agent Network
 
-**Decentralized Autonomous Agent Network** - 一个基于 Go + libp2p 的去中心化 P2P 协作网络。
+**Decentralized Autonomous Agent Network** - 一个基于 Go + libp2p 的去中心化 **Agent 协作网络**。
+
+> 🤖 **核心特点**: 节点由具有自主决策能力的智能体（Agent/LLM）操控，而非传统区块链的规则驱动。
+
+📖 **[架构文档](docs/architecture.md)** | 📋 **[任务追踪](Tasks/task-ALL.md)** | 🧪 **[测试指南](TESTING.md)**
 
 ## � 下载安装
 
@@ -66,38 +70,34 @@ go build -o build/node.exe ./cmd/node
 ```
 AgentNetwork/
 ├── cmd/
-│   ├── agent/                # Agent 入口（旧）
+│   ├── agent/                # Agent 入口
 │   └── node/                 # P2P 节点入口
-│       └── main.go
 ├── internal/
-│   ├── p2p/                  # P2P 网络核心
-│   │   ├── identity/         # 节点身份管理
-│   │   ├── host/             # libp2p 主机封装
-│   │   ├── discovery/        # DHT 节点发现
-│   │   └── node/             # 节点生命周期
-│   ├── api/
-│   │   └── server/           # gRPC 服务
-│   ├── config/               # 配置管理
-│   ├── crypto/               # 加密签名
-│   ├── heartbeat/            # 心跳服务
-│   ├── reputation/           # 信誉系统
-│   └── dht/                  # DHT 实现（旧）
-├── api/
-│   └── proto/                # Protobuf 定义
-├── pkg/
-│   └── message/              # 消息协议
-├── registry/keys/            # 公钥注册目录
-├── heartbeats/               # 心跳记录
-├── memory/                   # 项目记忆
-├── proposals/                # RFC 提案
+│   ├── p2p/                  # P2P 网络核心 (libp2p)
+│   ├── network/              # 网络通信 (消息、广播)
+│   ├── consensus/            # 共识机制 [规划]
+│   ├── ledger/               # 事件账本 [规划]
+│   ├── guarantee/            # 担保入网 [规划]
+│   ├── task/                 # 任务委托 [规划]
+│   ├── transfer/             # 文件传输 [规划]
+│   ├── escrow/               # 押金托管 [规划]
+│   ├── auth/                 # 认证模块 ✅
+│   ├── reputation/           # 声誉系统 ✅
+│   ├── incentive/            # 激励机制 ✅
+│   ├── voting/               # 投票机制 ✅
+│   ├── crypto/               # 加密签名 ✅
+│   ├── httpapi/              # HTTP API ✅
+│   └── storage/              # 存储模块 ✅
+├── api/proto/                # Protobuf 定义
+├── pkg/message/              # 消息协议
+├── docs/                     # 文档
+│   └── architecture.md       # 架构设计
 ├── scripts/                  # 工具脚本
-├── Tasks/                    # 任务文档
-├── go.mod
-├── go.sum
-├── Makefile
-├── config.example.json
-└── SKILL.md                  # 协议规范
+├── Tasks/                    # 任务追踪
+└── test/                     # 测试
 ```
+
+> 📖 详细架构说明见 [docs/architecture.md](docs/architecture.md)
 
 ## 🔧 核心功能
 
@@ -261,12 +261,23 @@ go test -v -run TestSpecificCase ./internal/module/...
 
 ## 📝 版本信息
 
-- **当前版本**: v0.0.1
-- **状态**: P2P 网络基础设施已实现，守护进程管理，HTTP API，存储模块
+- **当前版本**: v0.2.0-dev
+- **状态**: 基础设施完成，安全机制改进完成，共识与任务委托设计中
 - **Go 版本**: 1.24+
 - **核心依赖**: libp2p v0.47+
 
-### v0.0.1 更新内容
+### v0.2.0 进行中
+- 📋 共识机制与担保入网 (Task 26)
+- 📋 委托任务与文件传输 (Task 27)
+- 📋 事件账本设计
+
+### v0.1.1 安全改进 (2026-02-04)
+- ✅ Nonce 防重放机制
+- ✅ HTTP API Token 认证
+- ✅ 声誉来源类型限制
+- ✅ 声誉时间衰减计算
+
+### v0.1.0 基础功能
 - ✅ P2P 网络基础 (libp2p, DHT, AutoNAT)
 - ✅ 节点身份管理 (SM2/Ed25519)
 - ✅ 守护进程管理 (start/stop/restart/status)

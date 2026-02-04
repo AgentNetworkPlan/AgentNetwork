@@ -1,0 +1,365 @@
+// Package webadmin provides a web-based administration interface for AgentNetwork nodes.
+// It offers a Vue.js-based dashboard with real-time network topology visualization,
+// node management, API exploration, and log viewing capabilities.
+package webadmin
+
+import (
+	"context"
+	"embed"
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/gorilla/websocket"
+)
+
+//go:embed static/*
+var staticFiles embed.FS
+
+// Config holds the configuration for the web admin server.
+type Config struct {
+	// ListenAddr is the address to listen on (default: 127.0.0.1:18080)
+	ListenAddr string `json:"listen_addr"`
+
+	// AdminToken is the authentication token for admin access
+	AdminToken string `json:"admin_token"`
+
+	// SessionDuration is how long a session cookie is valid (default: 24h)
+	SessionDuration time.Duration `json:"session_duration"`
+
+	// EnableCORS enables CORS headers for development
+	EnableCORS bool `json:"enable_cors"`
+
+	// StaticPath is an optional path to serve static files from disk (for development)
+	StaticPath string `json:"static_path"`
+}
+
+// DefaultConfig returns the default configuration.
+func DefaultConfig() *Config {
+	return &Config{
+		ListenAddr:      "127.0.0.1:18080",
+		AdminToken:      "",
+		SessionDuration: 24 * time.Hour,
+		EnableCORS:      false,
+		StaticPath:      "",
+	}
+}
+
+// Server is the web administration server.
+type Server struct {
+	config     *Config
+	httpServer *http.Server
+	mux        *http.ServeMux
+	auth       *AuthManager
+	wsHub      *WebSocketHub
+	topology   *TopologyManager
+	handlers   *Handlers
+	nodeInfo   NodeInfoProvider
+
+	mu      sync.RWMutex
+	running bool
+}
+
+// NodeInfoProvider is the interface for getting node information.
+type NodeInfoProvider interface {
+	// GetNodeID returns the current node's ID
+	GetNodeID() string
+
+	// GetPeerCount returns the number of connected peers
+	GetPeerCount() int
+
+	// GetPeers returns the list of connected peer IDs
+	GetPeers() []string
+
+	// GetNodeStatus returns the node's current status
+	GetNodeStatus() *NodeStatus
+
+	// GetHTTPAPIEndpoints returns the list of HTTP API endpoints
+	GetHTTPAPIEndpoints() []APIEndpoint
+
+	// GetRecentLogs returns recent log entries
+	GetRecentLogs(limit int) []LogEntry
+
+	// GetNetworkStats returns network statistics
+	GetNetworkStats() *NetworkStats
+}
+
+// NodeStatus represents the current status of a node.
+type NodeStatus struct {
+	NodeID      string    `json:"node_id"`
+	PublicKey   string    `json:"public_key"`
+	StartTime   time.Time `json:"start_time"`
+	Uptime      string    `json:"uptime"`
+	Version     string    `json:"version"`
+	P2PPort     int       `json:"p2p_port"`
+	HTTPPort    int       `json:"http_port"`
+	GRPCPort    int       `json:"grpc_port"`
+	AdminPort   int       `json:"admin_port"`
+	IsGenesis   bool      `json:"is_genesis"`
+	IsSupernode bool      `json:"is_supernode"`
+	Reputation  float64   `json:"reputation"`
+	TokenCount  int64     `json:"token_count"`
+}
+
+// APIEndpoint represents an HTTP API endpoint.
+type APIEndpoint struct {
+	Method      string `json:"method"`
+	Path        string `json:"path"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
+}
+
+// LogEntry represents a log entry.
+type LogEntry struct {
+	Timestamp time.Time `json:"timestamp"`
+	Level     string    `json:"level"`
+	Module    string    `json:"module"`
+	Message   string    `json:"message"`
+}
+
+// NetworkStats represents network statistics.
+type NetworkStats struct {
+	TotalPeers       int     `json:"total_peers"`
+	ActivePeers      int     `json:"active_peers"`
+	MessagesSent     int64   `json:"messages_sent"`
+	MessagesReceived int64   `json:"messages_received"`
+	BytesSent        int64   `json:"bytes_sent"`
+	BytesReceived    int64   `json:"bytes_received"`
+	AvgLatency       float64 `json:"avg_latency_ms"`
+}
+
+// New creates a new web admin server.
+func New(config *Config, nodeInfo NodeInfoProvider) *Server {
+	if config == nil {
+		config = DefaultConfig()
+	}
+
+	s := &Server{
+		config:   config,
+		nodeInfo: nodeInfo,
+		mux:      http.NewServeMux(),
+	}
+
+	s.auth = NewAuthManager(config.AdminToken, config.SessionDuration)
+	s.wsHub = NewWebSocketHub()
+	s.topology = NewTopologyManager(nodeInfo)
+	s.handlers = NewHandlers(s)
+
+	s.setupRoutes()
+
+	return s
+}
+
+// setupRoutes configures all HTTP routes.
+func (s *Server) setupRoutes() {
+	// API routes
+	s.mux.HandleFunc("/api/auth/login", s.wrapHandler(s.handlers.HandleLogin, false))
+	s.mux.HandleFunc("/api/health", s.wrapHandler(s.handlers.HandleHealth, false))
+	
+	// Protected routes
+	s.mux.HandleFunc("/api/node/status", s.wrapHandler(s.handlers.HandleNodeStatus, true))
+	s.mux.HandleFunc("/api/node/peers", s.wrapHandler(s.handlers.HandlePeers, true))
+	s.mux.HandleFunc("/api/node/config", s.wrapHandler(s.handlers.HandleConfig, true))
+	s.mux.HandleFunc("/api/topology", s.wrapHandler(s.handlers.HandleTopology, true))
+	s.mux.HandleFunc("/api/endpoints", s.wrapHandler(s.handlers.HandleEndpoints, true))
+	s.mux.HandleFunc("/api/logs", s.wrapHandler(s.handlers.HandleLogs, true))
+	s.mux.HandleFunc("/api/stats", s.wrapHandler(s.handlers.HandleStats, true))
+	s.mux.HandleFunc("/api/auth/token/refresh", s.wrapHandler(s.handlers.HandleTokenRefresh, true))
+	s.mux.HandleFunc("/api/auth/logout", s.wrapHandler(s.handlers.HandleLogout, true))
+	
+	// WebSocket routes
+	s.mux.HandleFunc("/ws/topology", s.wsAuthMiddleware(s.handlers.HandleWSTopology))
+	s.mux.HandleFunc("/ws/logs", s.wsAuthMiddleware(s.handlers.HandleWSLogs))
+	s.mux.HandleFunc("/ws/stats", s.wsAuthMiddleware(s.handlers.HandleWSStats))
+
+	// Static files (Vue.js app)
+	s.setupStaticFiles()
+}
+
+// wrapHandler wraps a handler with CORS and optional auth middleware.
+func (s *Server) wrapHandler(handler http.HandlerFunc, requireAuth bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// CORS headers
+		if s.config.EnableCORS {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		}
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Auth check
+		if requireAuth && !s.checkAuth(r) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		handler(w, r)
+	}
+}
+
+// checkAuth checks if the request is authenticated.
+func (s *Server) checkAuth(r *http.Request) bool {
+	// Check URL token parameter (quick access)
+	token := r.URL.Query().Get("token")
+	if token != "" && s.auth.ValidateToken(token) {
+		return true
+	}
+
+	// Check session cookie
+	cookie, err := r.Cookie(SessionCookieName)
+	if err == nil && s.auth.ValidateSession(cookie.Value) {
+		return true
+	}
+
+	// Check Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if s.auth.ValidateToken(token) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// setupStaticFiles configures static file serving.
+func (s *Server) setupStaticFiles() {
+	if s.config.StaticPath != "" {
+		// Serve from disk (development mode)
+		s.mux.Handle("/", http.FileServer(http.Dir(s.config.StaticPath)))
+	} else {
+		// Serve embedded files (production mode)
+		subFS, err := fs.Sub(staticFiles, "static")
+		if err != nil {
+			// If no embedded files, serve a simple placeholder
+			s.mux.HandleFunc("/", s.handlers.HandleIndex)
+			return
+		}
+		s.mux.Handle("/", http.FileServer(http.FS(subFS)))
+	}
+}
+
+// wsAuthMiddleware wraps a WebSocket handler with authentication.
+func (s *Server) wsAuthMiddleware(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Check URL token parameter
+		token := r.URL.Query().Get("token")
+		if token != "" && s.auth.ValidateToken(token) {
+			handler(w, r)
+			return
+		}
+
+		// Check session cookie
+		cookie, err := r.Cookie(SessionCookieName)
+		if err == nil && s.auth.ValidateSession(cookie.Value) {
+			handler(w, r)
+			return
+		}
+
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	}
+}
+
+// Start starts the web admin server.
+func (s *Server) Start() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.running {
+		return fmt.Errorf("server already running")
+	}
+
+	s.httpServer = &http.Server{
+		Addr:         s.config.ListenAddr,
+		Handler:      s.mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Start WebSocket hub
+	go s.wsHub.Run()
+
+	// Start topology updates
+	go s.topology.StartUpdates(s.wsHub)
+
+	s.running = true
+
+	go func() {
+		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// Log error
+			fmt.Printf("Web admin server error: %v\n", err)
+		}
+	}()
+
+	fmt.Printf("🌐 Web Admin server started at http://%s\n", s.config.ListenAddr)
+	return nil
+}
+
+// Stop stops the web admin server.
+func (s *Server) Stop() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.running {
+		return nil
+	}
+
+	s.topology.StopUpdates()
+	s.wsHub.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := s.httpServer.Shutdown(ctx); err != nil {
+		return fmt.Errorf("shutdown error: %w", err)
+	}
+
+	s.running = false
+	return nil
+}
+
+// IsRunning returns whether the server is running.
+func (s *Server) IsRunning() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.running
+}
+
+// GetAdminURL returns the admin panel URL with token.
+func (s *Server) GetAdminURL() string {
+	if s.config.AdminToken != "" {
+		return fmt.Sprintf("http://%s?token=%s", s.config.ListenAddr, s.config.AdminToken)
+	}
+	return fmt.Sprintf("http://%s", s.config.ListenAddr)
+}
+
+// WriteJSON writes a JSON response.
+func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
+
+// WriteError writes a JSON error response.
+func WriteError(w http.ResponseWriter, status int, message string) {
+	WriteJSON(w, status, map[string]string{"error": message})
+}
+
+// WebSocket upgrader
+var wsUpgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for now
+	},
+}

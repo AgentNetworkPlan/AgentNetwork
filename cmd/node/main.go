@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -11,10 +13,13 @@ import (
 	"time"
 
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/api/server"
+	"github.com/AgentNetworkPlan/AgentNetwork/internal/config"
+	"github.com/AgentNetworkPlan/AgentNetwork/internal/crypto"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/daemon"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/httpapi"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/p2p/host"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/p2p/node"
+	"github.com/AgentNetworkPlan/AgentNetwork/internal/webadmin"
 )
 
 var (
@@ -44,6 +49,14 @@ func main() {
 		cmdLogs()
 	case "run":
 		cmdRun()
+	case "token":
+		cmdToken()
+	case "config":
+		cmdConfig()
+	case "keygen":
+		cmdKeygen()
+	case "health":
+		cmdHealth()
 	case "version", "-v", "--version":
 		cmdVersion()
 	case "help", "-h", "--help":
@@ -63,7 +76,8 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Printf(`DAAN P2P Node v%s
+	fmt.Printf(`%s
+DAAN P2P Node v%s
 
 用法:
   agentnetwork <命令> [选项]
@@ -75,6 +89,12 @@ func printUsage() {
   status      查看节点状态
   logs        查看节点日志
   run         前台运行节点（调试用）
+  
+  token       管理访问令牌
+  config      管理配置文件
+  keygen      生成密钥对
+  health      健康检查
+  
   version     显示版本信息
   help        显示帮助信息
 
@@ -87,9 +107,31 @@ func printUsage() {
   agentnetwork logs -n 100                     # 查看最后100行日志
   agentnetwork logs -f                         # 实时查看日志
   agentnetwork run                             # 前台运行（调试）
+  
+  agentnetwork token show                      # 显示当前令牌
+  agentnetwork token refresh                   # 刷新令牌
+  agentnetwork config init                     # 初始化配置
+  agentnetwork config show                     # 显示配置
+  agentnetwork keygen                          # 生成新密钥
+  agentnetwork health                          # 检查节点健康
 
 运行 'agentnetwork <命令> -h' 查看命令的详细选项
-`, version)
+`, getASCIILogo(), version)
+}
+
+// getASCIILogo returns the ASCII art logo for DAAN.
+func getASCIILogo() string {
+	return `
+╔══════════════════════════════════════════════════════════╗
+║     ____    _    _    _   _                              ║
+║    |  _ \  / \  / \  | \ | |                             ║
+║    | | | |/ _ \/ _ \ |  \| |                             ║
+║    | |_| / ___ \ ___ \| |\  |                            ║
+║    |____/_/   \_\   \_\_| \_|                            ║
+║                                                          ║
+║        Decentralized Agent Autonomous Network            ║
+╚══════════════════════════════════════════════════════════╝
+`
 }
 
 // 公共参数
@@ -101,6 +143,8 @@ type commonFlags struct {
 	role           string
 	grpcAddr       string
 	httpAddr       string
+	adminAddr      string
+	adminToken     string
 }
 
 func parseCommonFlags(fs *flag.FlagSet) *commonFlags {
@@ -112,6 +156,8 @@ func parseCommonFlags(fs *flag.FlagSet) *commonFlags {
 	fs.StringVar(&cf.role, "role", "normal", "节点角色: bootstrap, relay, normal")
 	fs.StringVar(&cf.grpcAddr, "grpc", ":50051", "gRPC服务地址")
 	fs.StringVar(&cf.httpAddr, "http", ":18345", "HTTP服务地址")
+	fs.StringVar(&cf.adminAddr, "admin", ":18080", "管理后台地址")
+	fs.StringVar(&cf.adminToken, "admin-token", "", "管理后台访问令牌（可选，默认自动生成）")
 	return cf
 }
 
@@ -341,6 +387,39 @@ func runNode(cf *commonFlags, d *daemon.Daemon) {
 		}
 	}
 
+	// 启动管理后台服务
+	var adminServer *webadmin.Server
+	adminToken := cf.adminToken
+	if adminToken == "" {
+		// 从数据目录读取或生成新令牌
+		adminToken = loadOrGenerateToken(cf.dataDir)
+	}
+
+	nodeInfoProvider := webadmin.NewDefaultNodeInfoProvider()
+	nodeInfoProvider.SetNodeInfo(n.Host().ID().String(), "", version)
+	nodeInfoProvider.SetPorts(0, extractPort(cf.httpAddr), extractPort(cf.grpcAddr), extractPort(cf.adminAddr))
+	nodeInfoProvider.SetRole(cf.role == "bootstrap", nodeRole == host.RoleRelay)
+	nodeInfoProvider.SetPeersFunc(func() []string {
+		peers := n.Host().Peers()
+		peerList := make([]string, 0, len(peers))
+		for _, p := range peers {
+			peerList = append(peerList, p.String())
+		}
+		return peerList
+	})
+
+	adminConfig := &webadmin.Config{
+		ListenAddr: cf.adminAddr,
+		AdminToken: adminToken,
+	}
+
+	adminServer = webadmin.New(adminConfig, nodeInfoProvider)
+	if err := adminServer.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "启动管理后台失败: %v\n", err)
+	} else {
+		fmt.Printf("管理后台已启动: http://localhost%s/?token=%s\n", cf.adminAddr, adminToken)
+	}
+
 	// 获取节点信息
 	nodeID := n.Host().ID().String()
 	listenAddrs := make([]string, 0)
@@ -399,6 +478,9 @@ func runNode(cf *commonFlags, d *daemon.Daemon) {
 	d.Cleanup()
 
 	// 停止服务
+	if adminServer != nil {
+		adminServer.Stop()
+	}
 	if httpServer != nil {
 		httpServer.Stop()
 	}
@@ -406,4 +488,355 @@ func runNode(cf *commonFlags, d *daemon.Daemon) {
 	n.Stop()
 
 	fmt.Println("节点已停止")
+}
+
+// ============ 新增命令实现 ============
+
+func cmdToken() {
+	if len(os.Args) < 3 {
+		printTokenUsage()
+		return
+	}
+
+	subCmd := os.Args[2]
+	switch subCmd {
+	case "show":
+		fs := flag.NewFlagSet("token show", flag.ExitOnError)
+		dataDir := fs.String("data", "./data", "数据目录")
+		fs.Parse(os.Args[3:])
+
+		token := loadOrGenerateToken(*dataDir)
+		fmt.Println("======== 访问令牌 ========")
+		fmt.Printf("令牌: %s\n", token)
+		fmt.Printf("管理后台 URL: http://localhost:18080/?token=%s\n", token)
+		fmt.Println("==========================")
+
+	case "refresh":
+		fs := flag.NewFlagSet("token refresh", flag.ExitOnError)
+		dataDir := fs.String("data", "./data", "数据目录")
+		fs.Parse(os.Args[3:])
+
+		token := generateAndSaveToken(*dataDir)
+		fmt.Println("======== 新令牌 ========")
+		fmt.Printf("令牌: %s\n", token)
+		fmt.Printf("管理后台 URL: http://localhost:18080/?token=%s\n", token)
+		fmt.Println("========================")
+		fmt.Println("⚠️  提示: 如果节点正在运行，请重启以应用新令牌")
+
+	default:
+		fmt.Fprintf(os.Stderr, "未知子命令: %s\n", subCmd)
+		printTokenUsage()
+		os.Exit(1)
+	}
+}
+
+func printTokenUsage() {
+	fmt.Print(`用法: agentnetwork token <子命令> [选项]
+
+子命令:
+  show      显示当前访问令牌
+  refresh   刷新（重新生成）访问令牌
+
+选项:
+  -data     数据目录 (默认: ./data)
+
+示例:
+  agentnetwork token show
+  agentnetwork token refresh -data ./mydata
+`)
+}
+
+func cmdConfig() {
+	if len(os.Args) < 3 {
+		printConfigUsage()
+		return
+	}
+
+	subCmd := os.Args[2]
+	switch subCmd {
+	case "init":
+		fs := flag.NewFlagSet("config init", flag.ExitOnError)
+		dataDir := fs.String("data", "./data", "数据目录")
+		force := fs.Bool("force", false, "强制覆盖现有配置")
+		fs.Parse(os.Args[3:])
+
+		configPath := *dataDir + "/config.json"
+		if _, err := os.Stat(configPath); err == nil && !*force {
+			fmt.Fprintf(os.Stderr, "配置文件已存在: %s\n", configPath)
+			fmt.Fprintln(os.Stderr, "使用 -force 强制覆盖")
+			os.Exit(1)
+		}
+
+		cfg := config.DefaultConfig()
+		if err := config.SaveConfig(cfg, configPath); err != nil {
+			fmt.Fprintf(os.Stderr, "保存配置失败: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("配置文件已创建: %s\n", configPath)
+
+	case "show":
+		fs := flag.NewFlagSet("config show", flag.ExitOnError)
+		dataDir := fs.String("data", "./data", "数据目录")
+		fs.Parse(os.Args[3:])
+
+		configPath := *dataDir + "/config.json"
+		cfg, err := config.LoadConfig(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
+			os.Exit(1)
+		}
+
+		data, _ := json.MarshalIndent(cfg, "", "  ")
+		fmt.Println(string(data))
+
+	case "validate":
+		fs := flag.NewFlagSet("config validate", flag.ExitOnError)
+		dataDir := fs.String("data", "./data", "数据目录")
+		fs.Parse(os.Args[3:])
+
+		configPath := *dataDir + "/config.json"
+		_, err := config.LoadConfig(configPath)
+		if err != nil {
+			fmt.Printf("❌ 配置无效: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("✅ 配置有效")
+
+	default:
+		fmt.Fprintf(os.Stderr, "未知子命令: %s\n", subCmd)
+		printConfigUsage()
+		os.Exit(1)
+	}
+}
+
+func printConfigUsage() {
+	fmt.Print(`用法: agentnetwork config <子命令> [选项]
+
+子命令:
+  init      初始化配置文件
+  show      显示当前配置
+  validate  验证配置文件
+
+选项:
+  -data     数据目录 (默认: ./data)
+  -force    强制覆盖现有配置 (仅用于 init)
+
+示例:
+  agentnetwork config init
+  agentnetwork config init -force
+  agentnetwork config show
+  agentnetwork config validate
+`)
+}
+
+func cmdKeygen() {
+	fs := flag.NewFlagSet("keygen", flag.ExitOnError)
+	dataDir := fs.String("data", "./data", "数据目录")
+	force := fs.Bool("force", false, "强制覆盖现有密钥")
+	fs.Parse(os.Args[2:])
+
+	keyPath := *dataDir + "/keys/node.key"
+
+	if _, err := os.Stat(keyPath); err == nil && !*force {
+		fmt.Fprintf(os.Stderr, "密钥文件已存在: %s\n", keyPath)
+		fmt.Fprintln(os.Stderr, "使用 -force 强制覆盖")
+		os.Exit(1)
+	}
+
+	// 创建密钥目录
+	keysDir := *dataDir + "/keys"
+	if err := os.MkdirAll(keysDir, 0700); err != nil {
+		fmt.Fprintf(os.Stderr, "创建目录失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 生成密钥对
+	signer, err := crypto.NewSimpleSigner()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "生成密钥失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 获取公钥
+	publicKeyBytes, err := signer.PublicKeyBytes()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "获取公钥失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 保存私钥
+	if err := signer.SaveToFile(keyPath); err != nil {
+		fmt.Fprintf(os.Stderr, "保存密钥失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("======== 密钥生成成功 ========")
+	fmt.Printf("私钥路径: %s\n", keyPath)
+	fmt.Printf("公钥(hex): %s\n", hex.EncodeToString(publicKeyBytes))
+	fmt.Println("==============================")
+	fmt.Println("⚠️  警告: 请妥善保管私钥文件!")
+}
+
+func cmdHealth() {
+	fs := flag.NewFlagSet("health", flag.ExitOnError)
+	dataDir := fs.String("data", "./data", "数据目录")
+	httpAddr := fs.String("http", ":18345", "HTTP服务地址")
+	timeout := fs.Int("timeout", 5, "超时时间（秒）")
+	jsonOutput := fs.Bool("json", false, "JSON格式输出")
+	fs.Parse(os.Args[2:])
+
+	// 首先检查守护进程状态
+	d := daemon.New(&daemon.Config{
+		DataDir: *dataDir,
+	})
+
+	status := d.Status()
+
+	healthResult := struct {
+		Healthy     bool     `json:"healthy"`
+		Process     bool     `json:"process"`
+		HTTPService bool     `json:"http_service"`
+		PID         int      `json:"pid,omitempty"`
+		NodeID      string   `json:"node_id,omitempty"`
+		Uptime      string   `json:"uptime,omitempty"`
+		Errors      []string `json:"errors,omitempty"`
+	}{
+		Healthy:     true,
+		Process:     status.Running,
+		HTTPService: false,
+		PID:         status.PID,
+		NodeID:      status.NodeID,
+		Uptime:      status.Uptime,
+		Errors:      []string{},
+	}
+
+	if !status.Running {
+		healthResult.Healthy = false
+		healthResult.Errors = append(healthResult.Errors, "节点进程未运行")
+	}
+
+	// 检查 HTTP 服务
+	if status.Running {
+		httpURL := fmt.Sprintf("http://localhost%s/v1/health", *httpAddr)
+		client := &httpClient{timeout: time.Duration(*timeout) * time.Second}
+		if err := client.checkHealth(httpURL); err != nil {
+			healthResult.Errors = append(healthResult.Errors, fmt.Sprintf("HTTP服务检查失败: %v", err))
+		} else {
+			healthResult.HTTPService = true
+		}
+	}
+
+	healthResult.Healthy = healthResult.Process && healthResult.HTTPService
+
+	if *jsonOutput {
+		data, _ := json.MarshalIndent(healthResult, "", "  ")
+		fmt.Println(string(data))
+		if !healthResult.Healthy {
+			os.Exit(1)
+		}
+		return
+	}
+
+	// 格式化输出
+	fmt.Println("======== 健康检查 ========")
+	if healthResult.Healthy {
+		fmt.Println("状态: ✅ 健康")
+	} else {
+		fmt.Println("状态: ❌ 不健康")
+	}
+
+	fmt.Printf("进程状态: %s\n", boolToStatus(healthResult.Process))
+	fmt.Printf("HTTP服务: %s\n", boolToStatus(healthResult.HTTPService))
+
+	if healthResult.NodeID != "" {
+		fmt.Printf("节点ID: %s\n", healthResult.NodeID)
+	}
+	if healthResult.Uptime != "" {
+		fmt.Printf("运行时间: %s\n", healthResult.Uptime)
+	}
+
+	if len(healthResult.Errors) > 0 {
+		fmt.Println("错误:")
+		for _, err := range healthResult.Errors {
+			fmt.Printf("  - %s\n", err)
+		}
+	}
+
+	fmt.Println("==========================")
+
+	if !healthResult.Healthy {
+		os.Exit(1)
+	}
+}
+
+// ============ 辅助函数 ============
+
+func loadOrGenerateToken(dataDir string) string {
+	tokenPath := dataDir + "/admin_token"
+	data, err := os.ReadFile(tokenPath)
+	if err == nil && len(data) > 0 {
+		return strings.TrimSpace(string(data))
+	}
+	return generateAndSaveToken(dataDir)
+}
+
+func generateAndSaveToken(dataDir string) string {
+	token := webadmin.GenerateToken()
+
+	// 确保目录存在
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return token
+	}
+
+	tokenPath := dataDir + "/admin_token"
+	_ = os.WriteFile(tokenPath, []byte(token), 0600)
+	return token
+}
+
+func extractPort(addr string) int {
+	if addr == "" {
+		return 0
+	}
+	// 处理 :port 或 host:port 格式
+	if strings.HasPrefix(addr, ":") {
+		var port int
+		fmt.Sscanf(addr, ":%d", &port)
+		return port
+	}
+	parts := strings.Split(addr, ":")
+	if len(parts) >= 2 {
+		var port int
+		fmt.Sscanf(parts[len(parts)-1], "%d", &port)
+		return port
+	}
+	return 0
+}
+
+func boolToStatus(b bool) string {
+	if b {
+		return "✅"
+	}
+	return "❌"
+}
+
+// httpClient is a simple HTTP client for health checks.
+type httpClient struct {
+	timeout time.Duration
+}
+
+func (c *httpClient) checkHealth(url string) error {
+	// 使用标准库进行健康检查
+	client := &http.Client{Timeout: c.timeout}
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP状态码: %d", resp.StatusCode)
+	}
+	return nil
 }

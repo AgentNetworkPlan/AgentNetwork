@@ -106,3 +106,26 @@ func (c *Config) Save(path string) error {
 	}
 	return os.WriteFile(path, data, 0644)
 }
+
+// SaveConfig saves a config to the specified path.
+func SaveConfig(cfg *Config, path string) error {
+	// Ensure directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return cfg.Save(path)
+}
+
+// LoadConfig loads a config from the specified path.
+func LoadConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg := &Config{}
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}

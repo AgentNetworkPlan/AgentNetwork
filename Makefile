@@ -71,6 +71,7 @@ help:
 	@echo "可用命令："
 	@echo "  make deps          - 安装依赖"
 	@echo "  make build         - 构建项目"
+	@echo "  make build-admin   - 构建管理界面"
 	@echo "  make run           - 运行项目"
 	@echo "  make test          - 运行测试"
 	@echo "  make test-coverage - 运行测试并生成覆盖率报告"
@@ -78,3 +79,15 @@ help:
 	@echo "  make lint          - 代码检查"
 	@echo "  make clean         - 清理构建产物"
 	@echo "  make keygen        - 生成密钥对"
+	@echo "  make dev-admin     - 启动前端开发服务器"
+
+# 构建管理界面 (Vue.js)
+build-admin:
+	@echo "构建 DAAN Admin 前端..."
+	cd web/admin && npm install && npm run build
+	@echo "前端已构建到 internal/webadmin/static/"
+
+# 启动前端开发服务器
+dev-admin:
+	@echo "启动前端开发服务器..."
+	cd web/admin && npm run dev

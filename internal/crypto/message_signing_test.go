@@ -259,21 +259,26 @@ func TestCleanupExpired(t *testing.T) {
 	signer, _ := NewMessageSigner()
 
 	// 创建几条消息
-	for i := 0; i < 5; i++ {
+	// 注意: 每条消息会存储两条记录 (MessageID 和 Nonce)
+	messageCount := 5
+	for i := 0; i < messageCount; i++ {
 		msg, _ := signer.SignMessage(MsgTypeHeartbeat, i)
 		verifier.VerifyMessage(msg)
 	}
 
-	if verifier.SeenCount() != 5 {
-		t.Errorf("应该有5条记录，实际: %d", verifier.SeenCount())
+	count := verifier.SeenCount()
+	// 每条消息产生 2 条记录 (MessageID + Nonce)
+	expectedCount := messageCount * 2
+	if count != expectedCount {
+		t.Errorf("应该有%d条记录，实际: %d", expectedCount, count)
 	}
 
 	// 等待过期
 	time.Sleep(150 * time.Millisecond)
 
 	cleaned := verifier.CleanupExpired()
-	if cleaned != 5 {
-		t.Errorf("应该清理5条记录，实际: %d", cleaned)
+	if cleaned != expectedCount {
+		t.Errorf("应该清理%d条记录，实际: %d", expectedCount, cleaned)
 	}
 
 	if verifier.SeenCount() != 0 {

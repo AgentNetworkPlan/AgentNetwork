@@ -54,12 +54,25 @@ type SignedMessage struct {
 	Sender      string      `json:"sender"`       // 发送者节点ID
 	SenderKey   string      `json:"sender_key"`   // 发送者公钥(hex)
 	Timestamp   int64       `json:"timestamp"`    // 时间戳(毫秒)
+	Nonce       string      `json:"nonce"`        // 随机数防重放
 
 	// 消息体
 	Content json.RawMessage `json:"content"` // 消息内容
 
 	// 签名
 	Signature string `json:"signature"` // SM2签名(hex)
+}
+
+// NonceLength Nonce 长度（16字节 = 128位）
+const NonceLength = 16
+
+// generateNonce 生成随机 Nonce
+func generateNonce() (string, error) {
+	bytes := make([]byte, NonceLength)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("生成 Nonce 失败: %w", err)
+	}
+	return hex.EncodeToString(bytes), nil
 }
 
 // MessageSigner 消息签名器
@@ -146,13 +159,19 @@ func (ms *MessageSigner) SignMessage(msgType MessageType, content interface{}) (
 	timestamp := time.Now().UnixMilli()
 	senderKey := hex.EncodeToString(sm2.Compress(ms.publicKey))
 
-	// 生成消息ID = SM3(Sender + Timestamp + Content)
-	idData := fmt.Sprintf("%s%d%s", ms.nodeID, timestamp, string(contentBytes))
+	// 生成 Nonce 防重放
+	nonce, err := generateNonce()
+	if err != nil {
+		return nil, err
+	}
+
+	// 生成消息ID = SM3(Sender + Timestamp + Nonce + Content)
+	idData := fmt.Sprintf("%s%d%s%s", ms.nodeID, timestamp, nonce, string(contentBytes))
 	idHash := sm3.Sm3Sum([]byte(idData))
 	messageID := hex.EncodeToString(idHash[:16])
 
-	// 计算摘要 = SM3(Content + MessageType + Timestamp + Sender)
-	digest := computeDigest(contentBytes, msgType, timestamp, ms.nodeID)
+	// 计算摘要 = SM3(Content + MessageType + Timestamp + Nonce + Sender)
+	digest := computeDigestWithNonce(contentBytes, msgType, timestamp, nonce, ms.nodeID)
 
 	// SM2 签名
 	sig, err := ms.privateKey.Sign(rand.Reader, digest, nil)
@@ -165,6 +184,7 @@ func (ms *MessageSigner) SignMessage(msgType MessageType, content interface{}) (
 		MessageType: msgType,
 		Sender:      ms.nodeID,
 		SenderKey:   senderKey,
+		Nonce:       nonce,
 		Timestamp:   timestamp,
 		Content:     contentBytes,
 		Signature:   hex.EncodeToString(sig),
@@ -179,13 +199,19 @@ func (ms *MessageSigner) SignRawMessage(msgType MessageType, content []byte) (*S
 	timestamp := time.Now().UnixMilli()
 	senderKey := hex.EncodeToString(sm2.Compress(ms.publicKey))
 
+	// 生成 Nonce 防重放
+	nonce, err := generateNonce()
+	if err != nil {
+		return nil, err
+	}
+
 	// 生成消息ID
-	idData := fmt.Sprintf("%s%d%s", ms.nodeID, timestamp, string(content))
+	idData := fmt.Sprintf("%s%d%s%s", ms.nodeID, timestamp, nonce, string(content))
 	idHash := sm3.Sm3Sum([]byte(idData))
 	messageID := hex.EncodeToString(idHash[:16])
 
-	// 计算摘要
-	digest := computeDigest(content, msgType, timestamp, ms.nodeID)
+	// 计算摘要（带 Nonce）
+	digest := computeDigestWithNonce(content, msgType, timestamp, nonce, ms.nodeID)
 
 	// SM2 签名
 	sig, err := ms.privateKey.Sign(rand.Reader, digest, nil)
@@ -198,16 +224,25 @@ func (ms *MessageSigner) SignRawMessage(msgType MessageType, content []byte) (*S
 		MessageType: msgType,
 		Sender:      ms.nodeID,
 		SenderKey:   senderKey,
+		Nonce:       nonce,
 		Timestamp:   timestamp,
 		Content:     content,
 		Signature:   hex.EncodeToString(sig),
 	}, nil
 }
 
-// computeDigest 计算消息摘要
+// computeDigest 计算消息摘要 (兼容旧消息)
 // Digest = SM3(Content + MessageType + Timestamp + Sender)
 func computeDigest(content []byte, msgType MessageType, timestamp int64, sender string) []byte {
 	data := fmt.Sprintf("%s%s%d%s", string(content), msgType, timestamp, sender)
+	hash := sm3.Sm3Sum([]byte(data))
+	return hash[:]
+}
+
+// computeDigestWithNonce 计算带 Nonce 的消息摘要
+// Digest = SM3(Content + MessageType + Timestamp + Nonce + Sender)
+func computeDigestWithNonce(content []byte, msgType MessageType, timestamp int64, nonce, sender string) []byte {
+	data := fmt.Sprintf("%s%s%d%s%s", string(content), msgType, timestamp, nonce, sender)
 	hash := sm3.Sm3Sum([]byte(data))
 	return hash[:]
 }
@@ -260,17 +295,30 @@ func (mv *MessageVerifier) VerifyMessage(msg *SignedMessage) *VerifyResult {
 		return result
 	}
 
-	// 2. 检查重复消息
+	// 2. 检查 Nonce 是否存在（新消息必须有 Nonce）
+	hasNonce := msg.Nonce != ""
+
+	// 3. 检查重复消息（使用 MessageID 或 Nonce）
 	mv.mu.Lock()
 	if _, seen := mv.seenMessages[msg.MessageID]; seen {
 		mv.mu.Unlock()
-		result.Error = "重复消息"
+		result.Error = "重复消息 (MessageID 已存在)"
 		return result
+	}
+	// 如果有 Nonce，也检查 Nonce 是否重复
+	if hasNonce {
+		nonceKey := msg.Sender + ":" + msg.Nonce
+		if _, seen := mv.seenMessages[nonceKey]; seen {
+			mv.mu.Unlock()
+			result.Error = "重复消息 (Nonce 已使用)"
+			return result
+		}
+		mv.seenMessages[nonceKey] = msg.Timestamp
 	}
 	mv.seenMessages[msg.MessageID] = msg.Timestamp
 	mv.mu.Unlock()
 
-	// 3. 验证发送者公钥与NodeID匹配
+	// 4. 验证发送者公钥与NodeID匹配
 	pubKeyBytes, err := hex.DecodeString(msg.SenderKey)
 	if err != nil {
 		result.Error = "无效的发送者公钥"
@@ -290,8 +338,14 @@ func (mv *MessageVerifier) VerifyMessage(msg *SignedMessage) *VerifyResult {
 		return result
 	}
 
-	// 4. 计算摘要并验证签名
-	digest := computeDigest(msg.Content, msg.MessageType, msg.Timestamp, msg.Sender)
+	// 5. 计算摘要并验证签名（根据是否有 Nonce 选择不同的摘要算法）
+	var digest []byte
+	if hasNonce {
+		digest = computeDigestWithNonce(msg.Content, msg.MessageType, msg.Timestamp, msg.Nonce, msg.Sender)
+	} else {
+		// 兼容旧消息（无 Nonce）
+		digest = computeDigest(msg.Content, msg.MessageType, msg.Timestamp, msg.Sender)
+	}
 
 	sigBytes, err := hex.DecodeString(msg.Signature)
 	if err != nil {
@@ -335,8 +389,14 @@ func VerifyMessageStatic(msg *SignedMessage) *VerifyResult {
 		return result
 	}
 
-	// 2. 计算摘要并验证签名
-	digest := computeDigest(msg.Content, msg.MessageType, msg.Timestamp, msg.Sender)
+	// 2. 计算摘要并验证签名（根据是否有 Nonce 选择不同的摘要算法）
+	var digest []byte
+	if msg.Nonce != "" {
+		digest = computeDigestWithNonce(msg.Content, msg.MessageType, msg.Timestamp, msg.Nonce, msg.Sender)
+	} else {
+		// 兼容旧消息（无 Nonce）
+		digest = computeDigest(msg.Content, msg.MessageType, msg.Timestamp, msg.Sender)
+	}
 
 	sigBytes, err := hex.DecodeString(msg.Signature)
 	if err != nil {

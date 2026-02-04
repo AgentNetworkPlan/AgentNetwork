@@ -34,6 +34,10 @@ type Config struct {
 	EnableCORS    bool
 	MaxBodySize   int64
 	
+	// Token 认证配置
+	APIToken       string // API Token（为空则自动生成）
+	AuthEnabled    bool   // 是否启用 Token 认证（默认启用）
+	
 	// 签名函数（用于验证请求）
 	VerifyFunc func(nodeID string, data []byte, signature string) bool
 }
@@ -47,6 +51,7 @@ func DefaultConfig(nodeID string) *Config {
 		WriteTimeout: 30 * time.Second,
 		EnableCORS:   true,
 		MaxBodySize:  10 * 1024 * 1024, // 10MB
+		AuthEnabled:  true,             // 默认启用认证
 	}
 }
 
@@ -295,6 +300,9 @@ type Server struct {
 	// 指责扩展
 	AccusationDetailFunc  func(accID string) (map[string]interface{}, error)
 	AccusationAnalyzeFunc func(nodeID string) map[string]interface{}
+	
+	// Token 认证管理器
+	tokenManager *TokenManager
 }
 
 // NewServer 创建 HTTP API 服务器
@@ -306,10 +314,18 @@ func NewServer(config *Config) (*Server, error) {
 		return nil, ErrEmptyNodeID
 	}
 	
+	// 创建 Token 管理器
+	authConfig := &AuthConfig{
+		APIToken:    config.APIToken,
+		AuthEnabled: config.AuthEnabled,
+	}
+	tokenManager := NewTokenManager(authConfig)
+	
 	s := &Server{
-		config:    config,
-		handlers:  make(map[string]http.HandlerFunc),
-		startTime: time.Now(),
+		config:       config,
+		handlers:     make(map[string]http.HandlerFunc),
+		startTime:    time.Now(),
+		tokenManager: tokenManager,
 	}
 	
 	return s, nil
@@ -325,6 +341,18 @@ func (s *Server) Start() error {
 	s.running = true
 	s.startTime = time.Now()
 	s.mu.Unlock()
+	
+	// 确保 Token 存在
+	if s.tokenManager.IsAuthEnabled() {
+		token, isNew, err := s.tokenManager.EnsureToken()
+		if err != nil {
+			return fmt.Errorf("初始化 API Token 失败: %w", err)
+		}
+		if isNew {
+			// 首次生成，打印到控制台
+			PrintTokenInfo(token, s.config.ListenAddr)
+		}
+	}
 	
 	mux := http.NewServeMux()
 	
@@ -365,6 +393,44 @@ func (s *Server) Stop() error {
 	}
 	
 	return nil
+}
+
+// GetAPIToken 获取当前 API Token
+func (s *Server) GetAPIToken() string {
+	if s.tokenManager == nil {
+		return ""
+	}
+	return s.tokenManager.GetToken()
+}
+
+// SetAPIToken 设置 API Token
+func (s *Server) SetAPIToken(token string) {
+	if s.tokenManager != nil {
+		s.tokenManager.SetToken(token)
+	}
+}
+
+// RegenerateAPIToken 重新生成 API Token
+func (s *Server) RegenerateAPIToken() (string, error) {
+	if s.tokenManager == nil {
+		return "", errors.New("token manager not initialized")
+	}
+	return s.tokenManager.RegenerateToken()
+}
+
+// RevokeAPIToken 撤销 API Token
+func (s *Server) RevokeAPIToken() {
+	if s.tokenManager != nil {
+		s.tokenManager.RevokeToken()
+	}
+}
+
+// GetAuthConfig 获取认证配置
+func (s *Server) GetAuthConfig() *AuthConfig {
+	if s.tokenManager == nil {
+		return nil
+	}
+	return s.tokenManager.GetConfig()
 }
 
 // registerRoutes 注册路由
@@ -474,7 +540,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		if s.config.EnableCORS {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-NodeID, X-Signature")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-NodeID, X-Signature, X-API-Token")
 		}
 		
 		// 预检请求
@@ -488,6 +554,25 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		
 		// 设置 JSON 响应头
 		w.Header().Set("Content-Type", "application/json")
+		
+		// Token 认证（健康检查端点除外）
+		if r.URL.Path != "/health" && r.URL.Path != "/status" {
+			if s.tokenManager != nil && s.tokenManager.IsAuthEnabled() {
+				token := r.Header.Get(TokenHeader)
+				if token == "" {
+					token = r.URL.Query().Get(TokenQueryParam)
+				}
+				if !s.tokenManager.ValidateToken(token) {
+					w.WriteHeader(http.StatusUnauthorized)
+					json.NewEncoder(w).Encode(Response{
+						Success: false,
+						Error:   "invalid or missing API token",
+						Code:    http.StatusUnauthorized,
+					})
+					return
+				}
+			}
+		}
 		
 		next.ServeHTTP(w, r)
 	})

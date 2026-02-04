@@ -41,6 +41,39 @@ const (
 	TaskTypeValidation TaskType = "validation" // 验证任务
 )
 
+// ReputationSource 声誉来源类型
+type ReputationSource string
+
+const (
+	// 有效的声誉来源（可验证）
+	SourceTaskCompletion  ReputationSource = "task_completion"   // 任务完成（主要来源）
+	SourceRelayService    ReputationSource = "relay_service"     // 中继服务
+	SourceStorageService  ReputationSource = "storage_service"   // 存储服务
+	SourceAuditPass       ReputationSource = "audit_pass"        // 审计通过
+	SourceVotingParticipation ReputationSource = "voting"        // 投票参与
+	
+	// 禁用的声誉来源
+	SourcePeerRating      ReputationSource = "peer_rating"       // 节点互评（已禁用）
+	SourceDirectTransfer  ReputationSource = "direct_transfer"   // 直接转移（已禁用）
+)
+
+// ValidReputationSources 有效的声誉来源列表
+var ValidReputationSources = map[ReputationSource]bool{
+	SourceTaskCompletion:      true,
+	SourceRelayService:        true,
+	SourceStorageService:      true,
+	SourceAuditPass:           true,
+	SourceVotingParticipation: true,
+}
+
+// IsValidReputationSource 检查声誉来源是否有效
+func IsValidReputationSource(source ReputationSource) bool {
+	return ValidReputationSources[source]
+}
+
+// ErrInvalidReputationSource 无效的声誉来源错误
+var ErrInvalidReputationSource = errors.New("invalid or disabled reputation source")
+
 // RewardStatus 奖励状态
 type RewardStatus string
 
@@ -53,17 +86,18 @@ const (
 
 // TaskReward 任务奖励记录
 type TaskReward struct {
-	RewardID     string       `json:"reward_id"`     // 奖励唯一ID
-	NodeID       string       `json:"node_id"`       // 节点ID
-	TaskID       string       `json:"task_id"`       // 任务ID
-	TaskType     TaskType     `json:"task_type"`     // 任务类型
-	BaseScore    float64      `json:"base_score"`    // 基础分
-	TaskWeight   float64      `json:"task_weight"`   // 任务权重
-	FinalScore   float64      `json:"final_score"`   // 最终得分
-	Timestamp    time.Time    `json:"timestamp"`     // 时间戳
-	Status       RewardStatus `json:"status"`        // 状态
-	Description  string       `json:"description"`   // 描述
-	PropagatedTo []string     `json:"propagated_to"` // 已传播到的节点
+	RewardID     string           `json:"reward_id"`     // 奖励唯一ID
+	NodeID       string           `json:"node_id"`       // 节点ID
+	TaskID       string           `json:"task_id"`       // 任务ID
+	TaskType     TaskType         `json:"task_type"`     // 任务类型
+	Source       ReputationSource `json:"source"`        // 声誉来源
+	BaseScore    float64          `json:"base_score"`    // 基础分
+	TaskWeight   float64          `json:"task_weight"`   // 任务权重
+	FinalScore   float64          `json:"final_score"`   // 最终得分
+	Timestamp    time.Time        `json:"timestamp"`     // 时间戳
+	Status       RewardStatus     `json:"status"`        // 状态
+	Description  string           `json:"description"`   // 描述
+	PropagatedTo []string         `json:"propagated_to"` // 已传播到的节点
 }
 
 // PropagationRecord 声誉传播记录
@@ -265,6 +299,11 @@ func (im *IncentiveManager) checkAndResetTolerances() {
 
 // AwardTaskCompletion 奖励任务完成
 func (im *IncentiveManager) AwardTaskCompletion(nodeID, taskID string, taskType TaskType, baseScore float64, description string) (*TaskReward, error) {
+	return im.AwardTaskCompletionWithSource(nodeID, taskID, taskType, SourceTaskCompletion, baseScore, description)
+}
+
+// AwardTaskCompletionWithSource 带声誉来源的任务奖励
+func (im *IncentiveManager) AwardTaskCompletionWithSource(nodeID, taskID string, taskType TaskType, source ReputationSource, baseScore float64, description string) (*TaskReward, error) {
 	if nodeID == "" {
 		return nil, ErrEmptyNodeID
 	}
@@ -273,6 +312,11 @@ func (im *IncentiveManager) AwardTaskCompletion(nodeID, taskID string, taskType 
 	}
 	if baseScore <= 0 {
 		return nil, ErrInvalidScore
+	}
+	
+	// 验证声誉来源是否有效
+	if !IsValidReputationSource(source) {
+		return nil, ErrInvalidReputationSource
 	}
 	
 	im.mu.Lock()
@@ -310,6 +354,7 @@ func (im *IncentiveManager) AwardTaskCompletion(nodeID, taskID string, taskType 
 		NodeID:       nodeID,
 		TaskID:       taskID,
 		TaskType:     taskType,
+		Source:       source,
 		BaseScore:    baseScore,
 		TaskWeight:   weight,
 		FinalScore:   finalScore,
