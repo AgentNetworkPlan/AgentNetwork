@@ -15,6 +15,43 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
+// makeAuthRequest 创建带认证的 HTTP 请求
+func makeAuthRequest(method, url, token string, body []byte) (*http.Response, error) {
+	var req *http.Request
+	var err error
+	if body != nil {
+		req, err = http.NewRequest(method, url, bytes.NewReader(body))
+	} else {
+		req, err = http.NewRequest(method, url, nil)
+	}
+	if err != nil {
+		return nil, err
+	}
+	
+	if token != "" {
+		req.Header.Set("X-API-Token", token)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	
+	return http.DefaultClient.Do(req)
+}
+
+// makeAuthGet 创建带认证的 GET 请求
+func makeAuthGet(url, token string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	
+	if token != "" {
+		req.Header.Set("X-API-Token", token)
+	}
+	
+	return http.DefaultClient.Do(req)
+}
+
 // TestEnhancedNetworkBehaviors 增强版网络协作测试 - 覆盖更多节点行为和API接口
 func TestEnhancedNetworkBehaviors(t *testing.T) {
 	const (
@@ -84,6 +121,7 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 	nodeIDs := make([]peer.ID, numNodes)
 	httpAPIs := make([]*httpapi.Server, numNodes)
 	httpPorts := make([]int, numNodes)
+	apiTokens := make([]string, numNodes) // 保存每个节点的 API Token
 
 	for i := 0; i < numNodes; i++ {
 		n, err := node.New(&node.Config{
@@ -115,12 +153,14 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 			t.Fatalf("创建节点 %d 的HTTP API失败: %v", i, err)
 		}
 		go httpAPI.Start()
+		time.Sleep(100 * time.Millisecond) // 等待服务器启动和 token 生成
 		
 		httpAPIs[i] = httpAPI
 		httpPorts[i] = httpPort
+		apiTokens[i] = httpAPI.GetAPIToken() // 获取 API Token
 
-		t.Logf("   ✓ 节点 %d 已启动 - PeerID: %s, HTTP: :%d", 
-			i+1, nodeIDs[i].ShortString(), httpPort)
+		t.Logf("   ✓ 节点 %d 已启动 - PeerID: %s, HTTP: :%d, Token: %s...", 
+			i+1, nodeIDs[i].ShortString(), httpPort, apiTokens[i][:8])
 	}
 
 	defer func() {
@@ -156,13 +196,17 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 	successCount := 0
 	for _, tc := range testCases {
 		url := fmt.Sprintf("http://localhost:%d%s", httpPorts[0], tc.endpoint)
-		resp, err := http.Get(url)
+		resp, err := makeAuthGet(url, apiTokens[0])
 		if err == nil && resp.StatusCode == http.StatusOK {
 			successCount++
 			t.Logf("   ✓ %s - %s", tc.name, tc.endpoint)
 			resp.Body.Close()
 		} else {
-			t.Logf("   ✗ %s - 失败", tc.name)
+			if err != nil {
+				t.Logf("   ✗ %s - 失败 (error: %v)", tc.name, err)
+			} else {
+				t.Logf("   ✗ %s - 失败 (status: %d)", tc.name, resp.StatusCode)
+			}
 			if resp != nil {
 				resp.Body.Close()
 			}
@@ -189,7 +233,7 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 	neighborSuccess := 0
 	for _, tc := range neighborTests {
 		url := fmt.Sprintf("http://localhost:%d%s", httpPorts[0], tc.endpoint)
-		resp, err := http.Get(url)
+		resp, err := makeAuthGet(url, apiTokens[0])
 		if err == nil && resp.StatusCode == http.StatusOK {
 			neighborSuccess++
 			t.Logf("   ✓ %s", tc.name)
@@ -224,7 +268,7 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 
 		msgBody, _ := json.Marshal(msgReq)
 		url := fmt.Sprintf("http://localhost:%d/api/v1/message/send", httpPorts[0])
-		resp, err := http.Post(url, "application/json", bytes.NewReader(msgBody))
+		resp, err := makeAuthRequest("POST", url, apiTokens[0], msgBody)
 		
 		if err == nil && resp.StatusCode == http.StatusOK {
 			t.Log("   ✓ 消息发送成功: 节点 1 → 节点 2")
@@ -254,7 +298,7 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 	mailboxSuccess := 0
 	for _, tc := range mailboxTests {
 		url := fmt.Sprintf("http://localhost:%d%s", httpPorts[0], tc.endpoint)
-		resp, err := http.Get(url)
+		resp, err := makeAuthGet(url, apiTokens[0])
 		if err == nil && resp.StatusCode == http.StatusOK {
 			mailboxSuccess++
 			t.Logf("   ✓ %s", tc.name)
@@ -289,7 +333,7 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 
 	taskBody, _ := json.Marshal(taskReq)
 	url := fmt.Sprintf("http://localhost:%d/api/v1/task/create", httpPorts[0])
-	resp, err := http.Post(url, "application/json", bytes.NewReader(taskBody))
+	resp, err := makeAuthRequest("POST", url, apiTokens[0], taskBody)
 	
 	taskCreated := false
 	if err == nil && resp.StatusCode == http.StatusOK {
@@ -305,7 +349,7 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 
 	// 查询任务列表
 	url = fmt.Sprintf("http://localhost:%d/api/v1/task/list", httpPorts[0])
-	resp, err = http.Get(url)
+	resp, err = makeAuthGet(url, apiTokens[0])
 	if err == nil && resp.StatusCode == http.StatusOK {
 		t.Log("   ✓ 任务列表查询成功")
 		resp.Body.Close()
@@ -333,7 +377,7 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 	reputationSuccess := 0
 	for _, tc := range reputationTests {
 		url := fmt.Sprintf("http://localhost:%d%s", httpPorts[0], tc.endpoint)
-		resp, err := http.Get(url)
+		resp, err := makeAuthGet(url, apiTokens[0])
 		if err == nil && resp.StatusCode == http.StatusOK {
 			reputationSuccess++
 			t.Logf("   ✓ %s", tc.name)
@@ -363,7 +407,7 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 
 	bulletinBody, _ := json.Marshal(bulletinReq)
 	url = fmt.Sprintf("http://localhost:%d/api/v1/bulletin/publish", httpPorts[0])
-	resp, err = http.Post(url, "application/json", bytes.NewReader(bulletinBody))
+	resp, err = makeAuthRequest("POST", url, apiTokens[0], bulletinBody)
 	
 	if err == nil && resp.StatusCode == http.StatusOK {
 		t.Log("   ✓ 公告发布成功")
@@ -377,7 +421,7 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 
 	// 搜索公告
 	url = fmt.Sprintf("http://localhost:%d/api/v1/bulletin/search?keyword=test", httpPorts[0])
-	resp, err = http.Get(url)
+	resp, err = makeAuthGet(url, apiTokens[0])
 	if err == nil && resp.StatusCode == http.StatusOK {
 		t.Log("   ✓ 公告搜索成功")
 		resp.Body.Close()
@@ -404,7 +448,7 @@ func TestEnhancedNetworkBehaviors(t *testing.T) {
 	votingSuccess := 0
 	for _, tc := range votingTests {
 		url := fmt.Sprintf("http://localhost:%d%s", httpPorts[0], tc.endpoint)
-		resp, err := http.Get(url)
+		resp, err := makeAuthGet(url, apiTokens[0])
 		if err == nil && resp.StatusCode == http.StatusOK {
 			votingSuccess++
 			t.Logf("   ✓ %s", tc.name)
