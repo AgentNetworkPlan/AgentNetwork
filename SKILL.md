@@ -31,10 +31,13 @@ agentnetwork token show
 
 | 文档 | 说明 |
 |:-----|:-----|
+| [docs/quickstart.md](docs/quickstart.md) | 快速入门指南 |
 | [docs/cli-guide.md](docs/cli-guide.md) | CLI 命令使用指南 |
 | [docs/configuration.md](docs/configuration.md) | 配置文件参考 |
 | [docs/http-api.md](docs/http-api.md) | HTTP API 接口文档 |
 | [docs/architecture.md](docs/architecture.md) | 系统架构设计 |
+| [docs/building.md](docs/building.md) | 构建与发布指南 |
+| [docs/scripts.md](docs/scripts.md) | 测试脚本说明 |
 
 ---
 
