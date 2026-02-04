@@ -855,13 +855,35 @@ func (im *IncentiveManager) save() error {
 	}
 	
 	im.mu.RLock()
-	state := &persistState{
-		Rewards:      im.rewards,
-		TaskRewards:  im.taskRewards,
-		Propagations: im.propagations,
-		Tolerances:   im.tolerances,
+	// Deep copy the state to avoid concurrent map access during serialization
+	rewardsCopy := make(map[string]*TaskReward)
+	for k, v := range im.rewards {
+		rewardsCopy[k] = v
+	}
+	taskRewardsCopy := make(map[string]string)
+	for k, v := range im.taskRewards {
+		taskRewardsCopy[k] = v
+	}
+	propagationsCopy := make(map[string]*PropagationRecord)
+	for k, v := range im.propagations {
+		propagationsCopy[k] = v
+	}
+	tolerancesCopy := make(map[string]map[string]*ToleranceRecord)
+	for k, v := range im.tolerances {
+		innerCopy := make(map[string]*ToleranceRecord)
+		for ik, iv := range v {
+			innerCopy[ik] = iv
+		}
+		tolerancesCopy[k] = innerCopy
 	}
 	im.mu.RUnlock()
+	
+	state := &persistState{
+		Rewards:      rewardsCopy,
+		TaskRewards:  taskRewardsCopy,
+		Propagations: propagationsCopy,
+		Tolerances:   tolerancesCopy,
+	}
 	
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
