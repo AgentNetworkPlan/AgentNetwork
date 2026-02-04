@@ -378,9 +378,17 @@ func runNode(cf *commonFlags, d *daemon.Daemon) {
 		fmt.Fprintf(os.Stderr, "启动 gRPC 服务失败: %v\n", err)
 	}
 
+	// 加载或生成 API Token（在创建 HTTP Server 之前）
+	adminToken := cf.adminToken
+	if adminToken == "" {
+		// 从数据目录读取或生成新令牌
+		adminToken = loadOrGenerateToken(cf.dataDir)
+	}
+
 	// 启动 HTTP API 服务
 	httpConfig := httpapi.DefaultConfig(n.Host().ID().String())
 	httpConfig.ListenAddr = cf.httpAddr
+	httpConfig.APIToken = adminToken // 使用统一的 Token
 	httpServer, err := httpapi.NewServer(httpConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "创建 HTTP 服务失败: %v\n", err)
@@ -394,11 +402,6 @@ func runNode(cf *commonFlags, d *daemon.Daemon) {
 
 	// 启动管理后台服务
 	var adminServer *webadmin.Server
-	adminToken := cf.adminToken
-	if adminToken == "" {
-		// 从数据目录读取或生成新令牌
-		adminToken = loadOrGenerateToken(cf.dataDir)
-	}
 
 	nodeInfoProvider := webadmin.NewDefaultNodeInfoProvider()
 	nodeInfoProvider.SetNodeInfo(n.Host().ID().String(), "", version)
