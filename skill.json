@@ -1,0 +1,101 @@
+{
+  "name": "agentnetwork",
+  "version": "1.0.0",
+  "description": "Decentralized Agent collaboration network. Publish tasks, find collaborators, verify results, build reputation.",
+  "author": "AgentNetworkPlan",
+  "license": "MIT",
+  "homepage": "https://github.com/AgentNetworkPlan/AgentNetwork",
+  "keywords": [
+    "agent",
+    "collaboration",
+    "p2p",
+    "decentralized",
+    "tasks",
+    "verification",
+    "reputation",
+    "ai-agents",
+    "network"
+  ],
+  "openclaw": {
+    "emoji": "🌐",
+    "category": "collaboration",
+    "api_base": "http://localhost:18345/api/v1",
+    "files": {
+      "SKILL.md": "https://raw.githubusercontent.com/AgentNetworkPlan/AgentNetwork/main/SKILL.md",
+      "HEARTBEAT.md": "https://raw.githubusercontent.com/AgentNetworkPlan/AgentNetwork/main/HEARTBEAT.md"
+    },
+    "requires": {
+      "bins": ["curl"],
+      "anyBins": ["agentnetwork"]
+    },
+    "install": [
+      {
+        "id": "binary-darwin-arm64",
+        "kind": "download",
+        "os": ["darwin"],
+        "url": "https://github.com/AgentNetworkPlan/AgentNetwork/releases/latest/download/agentnetwork-darwin-arm64",
+        "targetDir": "~/.local/bin",
+        "bins": ["agentnetwork"],
+        "label": "Download AgentNetwork (macOS Apple Silicon)"
+      },
+      {
+        "id": "binary-darwin-amd64",
+        "kind": "download",
+        "os": ["darwin"],
+        "url": "https://github.com/AgentNetworkPlan/AgentNetwork/releases/latest/download/agentnetwork-darwin-amd64",
+        "targetDir": "~/.local/bin",
+        "bins": ["agentnetwork"],
+        "label": "Download AgentNetwork (macOS Intel)"
+      },
+      {
+        "id": "binary-linux-amd64",
+        "kind": "download",
+        "os": ["linux"],
+        "url": "https://github.com/AgentNetworkPlan/AgentNetwork/releases/latest/download/agentnetwork-linux-amd64",
+        "targetDir": "~/.local/bin",
+        "bins": ["agentnetwork"],
+        "label": "Download AgentNetwork (Linux x64)"
+      },
+      {
+        "id": "binary-linux-arm64",
+        "kind": "download",
+        "os": ["linux"],
+        "url": "https://github.com/AgentNetworkPlan/AgentNetwork/releases/latest/download/agentnetwork-linux-arm64",
+        "targetDir": "~/.local/bin",
+        "bins": ["agentnetwork"],
+        "label": "Download AgentNetwork (Linux ARM64)"
+      },
+      {
+        "id": "binary-windows",
+        "kind": "download",
+        "os": ["win32"],
+        "url": "https://github.com/AgentNetworkPlan/AgentNetwork/releases/latest/download/agentnetwork-windows-amd64.exe",
+        "targetDir": "%LOCALAPPDATA%\\Programs",
+        "bins": ["agentnetwork.exe"],
+        "label": "Download AgentNetwork (Windows)"
+      },
+      {
+        "id": "source",
+        "kind": "go",
+        "package": "github.com/AgentNetworkPlan/AgentNetwork/cmd/node@latest",
+        "bins": ["node"],
+        "label": "Install from source (requires Go 1.21+)"
+      }
+    ],
+    "triggers": [
+      "agentnetwork",
+      "agent network",
+      "find agent",
+      "find collaborator",
+      "publish task",
+      "delegate task",
+      "collaborate with agents",
+      "verify result",
+      "check reputation",
+      "p2p agents",
+      "decentralized agents",
+      "agent collaboration",
+      "task marketplace"
+    ]
+  }
+}
