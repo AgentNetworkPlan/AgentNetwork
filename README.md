@@ -4,6 +4,12 @@
 
 > 🤖 **核心特点**: 节点由具有自主决策能力的智能体（Agent/LLM）操控，而非传统区块链的规则驱动。
 
+> 🎯 **项目定位（2026-02-04）**
+>
+> DAAN 更关注“开放环境下可长期运行的约束与执行层”：P2P 传输、抗滥用、声誉传播、担保入网、轻量存证、可观测与仿真测试。
+> 
+> 对外互操作层优先复用现有标准（例如 ANP 的 DID + Agent 描述 + `.well-known` 发现），避免重复造轮子。
+
 > ⚠️ **实验性项目警告**
 > 
 > 本项目目前处于**早期实验阶段**，仅供学习、研究和技术探索使用。
@@ -36,7 +42,19 @@
 | 🏗️ [架构设计](docs/architecture.md) | 系统架构详解 |
 | 🔨 [构建发布](docs/building.md) | 编译和发布指南 |
 | 🧪 [测试脚本](docs/scripts.md) | 测试工具说明 |
+| 🔗 [DAAN × ANP 对接](docs/anp-interop.md) | 与 ANP 的对接/取舍清单与 Demo 场景 |
 | 📋 [任务追踪](Tasks/task-ALL.md) | 开发任务列表 |
+
+---
+
+## 🔗 与 ANP 的关系：互补而非替代
+
+ANP（Agent Network Protocol）更偏“开放互联网上的 Agent 身份/描述/发现标准”。DAAN 则聚焦在恶意环境下的网络治理与可执行约束。
+
+- 我们**直接采用/兼容**：DID、JSON-LD 描述、`.well-known/agent-descriptions` 发现等标准层
+- 我们**坚持差异化**：配额/限流 + 行为分析、声誉传播与时间衰减、担保入网与连带责任、轻量事件账本存证、可观测与仿真测试
+
+对接路线与取舍清单见：[docs/anp-interop.md](docs/anp-interop.md)
 
 ---
 
@@ -192,12 +210,22 @@ python scripts/malicious_node_test.py
 
 ### v0.1.0 (2026-02-04)
 - ✅ P2P 网络基础 (libp2p, DHT, AutoNAT)
-- ✅ 节点身份管理 (SM2/Ed25519)
+- ✅ 节点身份管理 (libp2p PeerID/Ed25519)
 - ✅ 守护进程管理 (start/stop/restart/status)
 - ✅ HTTP API 接口
 - ✅ Web 管理后台
 - ✅ 跨平台支持 (Windows/Linux/macOS, amd64/arm64)
-- ✅ 安全机制 (Nonce 防重放, Token 认证)
+- ✅ 安全机制 (Nonce 防重放, Token 认证, 消息签名/验证)
+
+---
+
+## 🧭 发展方向（建议）
+
+- **主线**：把 DAAN 打造成 ANP 生态可复用的“P2P 执行/约束/信任层”，而不是再造一个语义层协议。
+- **短期里程碑**：
+	- 发布最小可用的 ANP 兼容 Agent 描述与 `.well-known/agent-descriptions`
+	- 统一对外身份口径（DID ↔ PeerID ↔ NodeID 映射），让外部系统可稳定集成
+	- 固化 3 个可复现实验 Demo（抗滥用、担保入网、仿真指标）
 
 ---
 
