@@ -1,0 +1,26 @@
+# 排除不需要的文件和目录
+node_modules/
+**/node_modules/
+.git/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+
+# 测试和临时文件
+testnet*/
+test_logs/
+*.log
+*.tmp
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 构建产物
+build/
+dist/
+*.exe

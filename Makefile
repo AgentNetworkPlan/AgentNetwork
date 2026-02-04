@@ -84,10 +84,10 @@ help:
 # 构建管理界面 (Vue.js)
 build-admin:
 	@echo "构建 DAAN Admin 前端..."
-	cd web/admin && npm install && npm run build
+	cd web/admin && pnpm install && pnpm run build
 	@echo "前端已构建到 internal/webadmin/static/"
 
 # 启动前端开发服务器
 dev-admin:
 	@echo "启动前端开发服务器..."
-	cd web/admin && npm run dev
+	cd web/admin && pnpm run dev

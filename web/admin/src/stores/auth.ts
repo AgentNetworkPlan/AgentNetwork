@@ -25,19 +25,36 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(token: string): Promise<boolean> {
     try {
+      console.log('[AuthStore] Starting login process...')
+      console.log('[AuthStore] Token:', token ? token.substring(0, 8) + '...' : 'empty')
+      console.log('[AuthStore] Calling API login...')
       const response = await api.login(token)
-      if (response.success) {
+      console.log('[AuthStore] Raw API response type:', typeof response)
+      console.log('[AuthStore] Raw API response:', response)
+      
+      if (response && response.success) {
+        console.log('[AuthStore] Login successful!')
+        console.log('[AuthStore] Session ID:', response.session_id)
+        console.log('[AuthStore] Expires at:', response.expires_at)
+        
         isAuthenticated.value = true
         localStorage.setItem('daan_authenticated', 'true')
         error.value = null
-        // Fetch node status after login
+        
+        console.log('[AuthStore] Updated authentication state')
+        console.log('[AuthStore] Fetching node status...')
         await fetchNodeStatus()
+        console.log('[AuthStore] Login process completed successfully')
         return true
       } else {
-        error.value = response.error || '登录失败'
+        error.value = (response && response.error) || '登录失败'
+        console.log('[AuthStore] Login failed:', error.value)
+        console.log('[AuthStore] Response success field:', response ? response.success : 'undefined')
         return false
       }
     } catch (e: any) {
+      console.error('[AuthStore] Login exception:', e)
+      console.error('[AuthStore] Exception stack:', e.stack)
       error.value = e.message || '网络错误'
       return false
     }
@@ -56,8 +73,11 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchNodeStatus(): Promise<void> {
     try {
+      console.log('[AuthStore] Fetching node status...')
       nodeStatus.value = await api.getNodeStatus()
-    } catch {
+      console.log('[AuthStore] Node status fetched successfully:', nodeStatus.value)
+    } catch (e) {
+      console.error('[AuthStore] Failed to fetch node status:', e)
       // Ignore errors
     }
   }

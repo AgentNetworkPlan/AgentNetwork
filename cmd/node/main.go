@@ -1,25 +1,30 @@
 package main
 
 import (
-	"encoding/hex"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/api/server"
+	"github.com/AgentNetworkPlan/AgentNetwork/internal/bulletin"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/config"
-	"github.com/AgentNetworkPlan/AgentNetwork/internal/crypto"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/daemon"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/httpapi"
+	"github.com/AgentNetworkPlan/AgentNetwork/internal/mailbox"
+	"github.com/AgentNetworkPlan/AgentNetwork/internal/neighbor"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/p2p/host"
+	"github.com/AgentNetworkPlan/AgentNetwork/internal/p2p/identity"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/p2p/node"
 	"github.com/AgentNetworkPlan/AgentNetwork/internal/webadmin"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 var (
@@ -417,11 +422,66 @@ func runNode(cf *commonFlags, d *daemon.Daemon) {
 	if err := adminServer.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "启动管理后台失败: %v\n", err)
 	} else {
-		fmt.Printf("管理后台已启动: http://localhost%s/?token=%s\n", cf.adminAddr, adminToken)
+		fmt.Printf("管理后台已启动: %s\n", adminServer.GetAdminURL())
 	}
 
-	// 获取节点信息
+	// 初始化邻居管理器
+	neighborConfig := neighbor.DefaultConfig()
+	neighborManager := neighbor.NewNeighborManager(neighborConfig)
+	neighborManager.SetPingFunc(func(nodeID string) error {
+		peerID, err := peer.Decode(nodeID)
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err = n.Host().FindPeer(ctx, peerID)
+		return err
+	})
+	neighborManager.Start()
+
+	// 初始化邮箱
 	nodeID := n.Host().ID().String()
+	mailboxConfig := mailbox.DefaultConfig(nodeID)
+	mailboxConfig.DataDir = filepath.Join(cf.dataDir, "mailbox")
+	mb, err := mailbox.NewMailbox(mailboxConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "创建邮箱失败: %v\n", err)
+	} else {
+		mb.Start()
+	}
+
+	// 初始化留言板
+	bulletinConfig := bulletin.DefaultBulletinConfig(nodeID)
+	bulletinConfig.DataDir = filepath.Join(cf.dataDir, "bulletin")
+	bb, err := bulletin.NewBulletinBoard(bulletinConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "创建留言板失败: %v\n", err)
+	} else {
+		bb.Start()
+	}
+
+	// 设置 OperationsProvider
+	opsProvider := webadmin.NewRealOperationsProvider(nodeID)
+	opsProvider.SetNeighborManager(neighborManager)
+	if mb != nil {
+		opsProvider.SetMailbox(mb)
+	}
+	if bb != nil {
+		opsProvider.SetBulletinBoard(bb)
+	}
+	opsProvider.SetGetPeersFunc(func() []peer.ID {
+		return n.Host().Peers()
+	})
+	opsProvider.SetConnectFunc(func(ctx context.Context, peerInfo peer.AddrInfo) error {
+		return n.Host().Connect(ctx, peerInfo)
+	})
+	opsProvider.SetFindPeerFunc(func(ctx context.Context, id peer.ID) (peer.AddrInfo, error) {
+		return n.Host().FindPeer(ctx, id)
+	})
+	adminServer.SetOperationsProvider(opsProvider)
+
+	// 获取节点监听地址
 	listenAddrs := make([]string, 0)
 	for _, addr := range n.Host().Addrs() {
 		listenAddrs = append(listenAddrs, addr.String()+"/p2p/"+nodeID)
@@ -485,6 +545,16 @@ func runNode(cf *commonFlags, d *daemon.Daemon) {
 		httpServer.Stop()
 	}
 	grpcServer.Stop()
+	
+	// 停止邻居、邮箱、留言板服务
+	neighborManager.Stop()
+	if mb != nil {
+		mb.Stop()
+	}
+	if bb != nil {
+		bb.Stop()
+	}
+	
 	n.Stop()
 
 	fmt.Println("节点已停止")
@@ -652,29 +722,24 @@ func cmdKeygen() {
 		os.Exit(1)
 	}
 
-	// 生成密钥对
-	signer, err := crypto.NewSimpleSigner()
+	// 使用 identity 模块生成 libp2p 兼容的密钥
+	id, err := identity.NewIdentity()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "生成密钥失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 获取公钥
-	publicKeyBytes, err := signer.PublicKeyBytes()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "获取公钥失败: %v\n", err)
-		os.Exit(1)
-	}
-
 	// 保存私钥
-	if err := signer.SaveToFile(keyPath); err != nil {
+	if err := id.Save(keyPath); err != nil {
 		fmt.Fprintf(os.Stderr, "保存密钥失败: %v\n", err)
 		os.Exit(1)
 	}
 
+	pubKeyHex, _ := id.PublicKeyHex()
 	fmt.Println("======== 密钥生成成功 ========")
 	fmt.Printf("私钥路径: %s\n", keyPath)
-	fmt.Printf("公钥(hex): %s\n", hex.EncodeToString(publicKeyBytes))
+	fmt.Printf("节点ID:   %s\n", id.PeerID.String())
+	fmt.Printf("公钥(hex): %s\n", pubKeyHex)
 	fmt.Println("==============================")
 	fmt.Println("⚠️  警告: 请妥善保管私钥文件!")
 }

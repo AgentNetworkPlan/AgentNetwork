@@ -1,3 +1,6 @@
+# =====================
+# Go 项目
+# =====================
 # 二进制文件
 build/
 dist/
@@ -6,6 +9,7 @@ dist/
 *.dll
 *.so
 *.dylib
+agentnetwork.exe
 
 # 测试覆盖率
 coverage.out
@@ -15,43 +19,74 @@ coverage.html
 # 依赖目录
 vendor/
 
-# IDE
+# =====================
+# Node.js / 前端 (pnpm)
+# =====================
+node_modules/
+.pnpm-store/
+.pnpm-debug.log
+web/admin/node_modules
+
+# =====================
+# IDE / 编辑器
+# =====================
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
+# =====================
 # 系统文件
+# =====================
 .DS_Store
 Thumbs.db
 
-# 配置文件（包含敏感信息）
+# =====================
+# 敏感配置 / 密钥
+# =====================
 config.json
-
-# 密钥文件
 keys/
+data/
 *.pem
 *.key
 
+# =====================
 # 日志
+# =====================
 *.log
 logs/
 
+# =====================
 # 临时文件
+# =====================
 tmp/
 temp/
-test_logs
+test_logs/
+testnet_docker/
+testnet_malicious/
+*.bak
 
-# 心跳记录（可选）
-# heartbeats/
+# =====================
+# 构建产物
+# =====================
+node.exe
+*.exe
+dist/
+internal/webadmin/static/
 
+# =====================
+# 虚拟环境
+# =====================
+.venv/
+
+# =====================
 # Python
+# =====================
 __pycache__/
 *.py[cod]
 *$py.class
 .Python
-*.so
 .env
 venv/
 ENV/

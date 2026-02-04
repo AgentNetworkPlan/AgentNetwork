@@ -1,109 +1,14 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head>
-    <meta charset="utf-8">
+  <head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="/vite.svg">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DAAN Admin - 数字群居社会管理平台</title>
-    <style>
-        :root {
-            --primary: #4fc3f7;
-            --bg: #1a1a2e;
-            --card-bg: #16213e;
-            --text: #eee;
-            --text-muted: #999;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            font-family: system-ui, -apple-system, sans-serif; 
-            background: var(--bg); 
-            color: var(--text); 
-            min-height: 100vh;
-        }
-        .loading {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-        .logo {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-        }
-        h1 { color: var(--primary); font-size: 2rem; margin-bottom: 0.5rem; }
-        p { color: var(--text-muted); margin-bottom: 1rem; }
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid var(--card-bg);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 2rem;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .status {
-            background: var(--card-bg);
-            padding: 1rem 2rem;
-            border-radius: 8px;
-            text-align: center;
-        }
-        .status a { 
-            color: var(--primary); 
-            text-decoration: none;
-        }
-        .status a:hover { text-decoration: underline; }
-        code {
-            background: #0d1424;
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            font-family: 'Consolas', monospace;
-        }
-    </style>
-</head>
-<body>
-    <div class="loading">
-        <div class="logo">🌐</div>
-        <h1>DAAN Admin Panel</h1>
-        <p>数字群居社会 - 去中心化Agent网络管理平台</p>
-        
-        <div class="spinner"></div>
-        
-        <div class="status">
-            <p>前端正在加载中...</p>
-            <p>如果此页面持续显示，请运行：</p>
-            <p><code>make build-admin</code></p>
-            <p style="margin-top: 1rem;">
-                API 状态: <a href="/api/health">/api/health</a>
-            </p>
-        </div>
-    </div>
-
-    <script>
-        // Check if Vue app is loaded, if not show this placeholder
-        setTimeout(function() {
-            fetch('/api/health')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.status === 'healthy') {
-                        document.querySelector('.status').innerHTML = `
-                            <p style="color: #4caf50;">✓ API 服务正常</p>
-                            <p>版本: ${data.version}</p>
-                            <p style="margin-top: 1rem; color: var(--text-muted);">
-                                Vue 前端未构建，请运行 <code>make build-admin</code>
-                            </p>
-                        `;
-                    }
-                })
-                .catch(err => {
-                    document.querySelector('.status').innerHTML = `
-                        <p style="color: #f44336;">✗ 无法连接到 API</p>
-                        <p>${err.message}</p>
-                    `;
-                });
-        }, 1000);
-    </script>
-</body>
+    <script type="module" crossorigin src="/assets/index-Dgx9WyMa.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-9Ap-F9FT.css">
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
 </html>

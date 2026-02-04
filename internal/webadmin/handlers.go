@@ -41,12 +41,8 @@ func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := h.server.auth.CreateSession(
-		req.Token,
-		r.RemoteAddr,
-		r.UserAgent(),
-	)
-	if err != nil {
+	// Validate token
+	if !h.server.auth.ValidateToken(req.Token) {
 		WriteJSON(w, http.StatusUnauthorized, LoginResponse{
 			Success: false,
 			Error:   "Invalid token",
@@ -54,33 +50,29 @@ func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set session cookie
+	// Set token cookie (expires in 24 hours)
+	expiresAt := time.Now().Add(24 * time.Hour)
 	http.SetCookie(w, &http.Cookie{
-		Name:     SessionCookieName,
-		Value:    session.ID,
+		Name:     TokenCookieName,
+		Value:    req.Token,
 		Path:     "/",
-		Expires:  session.ExpiresAt,
+		Expires:  expiresAt,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
 
 	WriteJSON(w, http.StatusOK, LoginResponse{
 		Success:   true,
-		SessionID: session.ID,
-		ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
+		SessionID: "token-authenticated", // For compatibility
+		ExpiresAt: expiresAt.Format(time.RFC3339),
 	})
 }
 
 // HandleLogout handles logout requests.
 func (h *Handlers) HandleLogout(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(SessionCookieName)
-	if err == nil {
-		h.server.auth.DeleteSession(cookie.Value)
-	}
-
-	// Clear the cookie
+	// Clear the token cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     SessionCookieName,
+		Name:     TokenCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -92,34 +84,33 @@ func (h *Handlers) HandleLogout(w http.ResponseWriter, r *http.Request) {
 
 // HandleTokenRefresh handles token refresh requests.
 func (h *Handlers) HandleTokenRefresh(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(SessionCookieName)
+	cookie, err := r.Cookie(TokenCookieName)
 	if err != nil {
-		WriteError(w, http.StatusUnauthorized, "No session found")
+		WriteError(w, http.StatusUnauthorized, "No token found")
 		return
 	}
 
-	if h.server.auth.RefreshSession(cookie.Value) {
-		session := h.server.auth.GetSession(cookie.Value)
-		if session != nil {
-			// Update cookie expiration
-			http.SetCookie(w, &http.Cookie{
-				Name:     SessionCookieName,
-				Value:    session.ID,
-				Path:     "/",
-				Expires:  session.ExpiresAt,
-				HttpOnly: true,
-				SameSite: http.SameSiteLaxMode,
-			})
+	// Validate current token
+	if h.server.auth.ValidateToken(cookie.Value) {
+		// Extend cookie expiration
+		expiresAt := time.Now().Add(24 * time.Hour)
+		http.SetCookie(w, &http.Cookie{
+			Name:     TokenCookieName,
+			Value:    cookie.Value,
+			Path:     "/",
+			Expires:  expiresAt,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
 
-			WriteJSON(w, http.StatusOK, map[string]interface{}{
-				"success":    true,
-				"expires_at": session.ExpiresAt.Format(time.RFC3339),
-			})
-			return
-		}
+		WriteJSON(w, http.StatusOK, map[string]interface{}{
+			"success":    true,
+			"expires_at": expiresAt.Format(time.RFC3339),
+		})
+		return
 	}
 
-	WriteError(w, http.StatusUnauthorized, "Session expired or invalid")
+	WriteError(w, http.StatusUnauthorized, "Token expired or invalid")
 }
 
 // HandleHealth handles health check requests.

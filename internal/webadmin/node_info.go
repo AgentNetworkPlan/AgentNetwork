@@ -235,6 +235,48 @@ func (p *DefaultNodeInfoProvider) GetNetworkStats() *NetworkStats {
 	return &stats
 }
 
+// ConnectToPeer connects to a peer by multiaddr (stub implementation)
+func (p *DefaultNodeInfoProvider) ConnectToPeer(multiaddr string) error {
+	// This should be overridden by actual node implementation
+	return fmt.Errorf("ConnectToPeer not implemented")
+}
+
+// DisconnectPeer disconnects from a peer by ID (stub implementation)
+func (p *DefaultNodeInfoProvider) DisconnectPeer(peerID string) error {
+	// This should be overridden by actual node implementation
+	return fmt.Errorf("DisconnectPeer not implemented")
+}
+
+// GetSystemInfo returns system information
+func (p *DefaultNodeInfoProvider) GetSystemInfo() *SystemInfo {
+	return &SystemInfo{
+		OS:           "unknown",
+		Arch:         "unknown",
+		NumCPU:       1,
+		NumGoroutine: 1,
+		MemAlloc:     0,
+		MemTotal:     0,
+		MemSys:       0,
+		GoVersion:    "unknown",
+		Hostname:     "unknown",
+	}
+}
+
+// GetBootstrapNodes returns the list of bootstrap nodes
+func (p *DefaultNodeInfoProvider) GetBootstrapNodes() []string {
+	return []string{}
+}
+
+// AddBootstrapNode adds a bootstrap node (stub implementation)
+func (p *DefaultNodeInfoProvider) AddBootstrapNode(addr string) error {
+	return fmt.Errorf("AddBootstrapNode not implemented")
+}
+
+// RemoveBootstrapNode removes a bootstrap node (stub implementation)
+func (p *DefaultNodeInfoProvider) RemoveBootstrapNode(addr string) error {
+	return fmt.Errorf("RemoveBootstrapNode not implemented")
+}
+
 // defaultHTTPEndpoints returns the default list of HTTP API endpoints.
 func defaultHTTPEndpoints() []APIEndpoint {
 	return []APIEndpoint{
@@ -247,25 +289,51 @@ func defaultHTTPEndpoints() []APIEndpoint {
 		{Method: "POST", Path: "/v1/peers/connect", Description: "连接到指定节点", Category: "Network"},
 		{Method: "DELETE", Path: "/v1/peers/{id}", Description: "断开与节点的连接", Category: "Network"},
 
-		// Messages
-		{Method: "POST", Path: "/v1/messages/send", Description: "发送消息给指定节点", Category: "Messaging"},
+		// Neighbors (邻居管理)
+		{Method: "GET", Path: "/api/neighbor/list", Description: "获取邻居列表", Category: "Neighbor"},
+		{Method: "GET", Path: "/api/neighbor/best", Description: "获取最佳邻居", Category: "Neighbor"},
+		{Method: "POST", Path: "/api/neighbor/add", Description: "添加邻居", Category: "Neighbor"},
+		{Method: "POST", Path: "/api/neighbor/remove", Description: "移除邻居", Category: "Neighbor"},
+		{Method: "POST", Path: "/api/neighbor/ping", Description: "Ping邻居节点", Category: "Neighbor"},
+
+		// Mailbox (邮箱)
+		{Method: "POST", Path: "/api/mailbox/send", Description: "发送邮件", Category: "Mailbox"},
+		{Method: "GET", Path: "/api/mailbox/inbox", Description: "获取收件箱", Category: "Mailbox"},
+		{Method: "GET", Path: "/api/mailbox/outbox", Description: "获取发件箱", Category: "Mailbox"},
+		{Method: "GET", Path: "/api/mailbox/read/{id}", Description: "读取邮件内容", Category: "Mailbox"},
+		{Method: "POST", Path: "/api/mailbox/mark-read", Description: "标记邮件已读", Category: "Mailbox"},
+		{Method: "POST", Path: "/api/mailbox/delete", Description: "删除邮件", Category: "Mailbox"},
+
+		// Bulletin (留言板)
+		{Method: "POST", Path: "/api/bulletin/publish", Description: "发布留言（受限流保护）", Category: "Bulletin"},
+		{Method: "GET", Path: "/api/bulletin/topic/{topic}", Description: "按话题查询留言", Category: "Bulletin"},
+		{Method: "GET", Path: "/api/bulletin/author/{author}", Description: "按作者查询留言", Category: "Bulletin"},
+		{Method: "GET", Path: "/api/bulletin/search", Description: "搜索留言", Category: "Bulletin"},
+		{Method: "POST", Path: "/api/bulletin/subscribe", Description: "订阅话题", Category: "Bulletin"},
+		{Method: "POST", Path: "/api/bulletin/unsubscribe", Description: "取消订阅话题", Category: "Bulletin"},
+		{Method: "POST", Path: "/api/bulletin/revoke", Description: "撤回留言", Category: "Bulletin"},
+		{Method: "GET", Path: "/api/bulletin/subscriptions", Description: "获取订阅列表", Category: "Bulletin"},
+
+		// Security (安全)
+		{Method: "GET", Path: "/api/security/status", Description: "获取限流状态", Category: "Security"},
+		{Method: "GET", Path: "/api/security/report", Description: "获取安全报告", Category: "Security"},
+
+		// Messages (消息)
+		{Method: "POST", Path: "/api/message/send", Description: "发送直接消息", Category: "Messaging"},
+		{Method: "POST", Path: "/api/message/broadcast", Description: "广播消息", Category: "Messaging"},
 		{Method: "GET", Path: "/v1/messages/inbox", Description: "获取收件箱消息", Category: "Messaging"},
-		{Method: "POST", Path: "/v1/messages/broadcast", Description: "广播消息", Category: "Messaging"},
 
-		// Bulletin
-		{Method: "GET", Path: "/v1/bulletin", Description: "获取留言板消息", Category: "Bulletin"},
-		{Method: "POST", Path: "/v1/bulletin", Description: "发布留言", Category: "Bulletin"},
-
-		// Reputation
-		{Method: "GET", Path: "/v1/reputation/{id}", Description: "获取节点声誉", Category: "Reputation"},
+		// Reputation (声誉)
+		{Method: "GET", Path: "/api/reputation/query", Description: "查询节点声誉", Category: "Reputation"},
+		{Method: "GET", Path: "/api/reputation/ranking", Description: "获取声誉排行", Category: "Reputation"},
 		{Method: "POST", Path: "/v1/reputation/rate", Description: "评价节点", Category: "Reputation"},
 
-		// Voting
+		// Voting (投票)
 		{Method: "GET", Path: "/v1/votes", Description: "获取投票列表", Category: "Voting"},
 		{Method: "POST", Path: "/v1/votes", Description: "创建投票", Category: "Voting"},
 		{Method: "POST", Path: "/v1/votes/{id}/cast", Description: "投票", Category: "Voting"},
 
-		// Tasks
+		// Tasks (任务)
 		{Method: "GET", Path: "/v1/tasks", Description: "获取任务列表", Category: "Tasks"},
 		{Method: "POST", Path: "/v1/tasks", Description: "创建任务", Category: "Tasks"},
 		{Method: "POST", Path: "/v1/tasks/{id}/accept", Description: "接受任务", Category: "Tasks"},

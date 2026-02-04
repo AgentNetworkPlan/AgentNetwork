@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import api, { createWebSocket, type NetworkStats } from '@/api'
-import { Connection, Timer, Upload, Download, Monitor } from '@element-plus/icons-vue'
+import { Connection, Timer, Upload, Download } from '@element-plus/icons-vue'
 
 const authStore = useAuthStore()
 
@@ -27,16 +27,26 @@ onUnmounted(() => {
 async function fetchData() {
   loading.value = true
   try {
-    const [statsData, peersData] = await Promise.all([
-      api.getStats(),
-      api.getPeers()
-    ])
+    console.log('[Dashboard] Starting to fetch data...')
+    
+    console.log('[Dashboard] Fetching stats...')
+    const statsData = await api.getStats()
+    console.log('[Dashboard] Stats fetched successfully:', statsData)
     stats.value = statsData
+    
+    console.log('[Dashboard] Fetching peers...')
+    const peersData = await api.getPeers()
+    console.log('[Dashboard] Peers fetched successfully:', peersData)
     peers.value = peersData.peers
     peerCount.value = peersData.count
+    
+    console.log('[Dashboard] Fetching node status...')
     await authStore.fetchNodeStatus()
+    console.log('[Dashboard] Node status fetched successfully')
+    
+    console.log('[Dashboard] All data fetched successfully')
   } catch (e) {
-    console.error('Failed to fetch data:', e)
+    console.error('[Dashboard] Failed to fetch data:', e)
   }
   loading.value = false
 }

@@ -1,0 +1,207 @@
+# 异构网络P2P集群测试环境
+# 使用 docker-compose up -d 启动
+# 模拟5个节点的复杂网络环境
+
+version: '3.8'
+
+# 定义多个网络模拟异构网络环境
+networks:
+  # 主网络 - 所有节点都可访问
+  main_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  
+  # 子网络1 - 模拟内网环境
+  subnet1:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+  
+  # 子网络2 - 模拟另一个内网
+  subnet2:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
+
+services:
+  # ==================== 创世节点 ====================
+  genesis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent_genesis
+    hostname: genesis
+    environment:
+      - NODE_ROLE=bootstrap
+      - P2P_PORT=9000
+      - HTTP_PORT=18345
+      - ADMIN_PORT=18080
+      - GRPC_PORT=50051
+      - DATA_DIR=/data
+    volumes:
+      - ./testnet_docker/genesis:/data
+    ports:
+      - "9000:9000"
+      - "18345:18345"
+      - "18080:18080"
+    networks:
+      main_net:
+        ipv4_address: 172.20.0.10
+      subnet1:
+        ipv4_address: 172.21.0.10
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18345/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==================== 正常节点1 ====================
+  node1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent_node1
+    hostname: node1
+    depends_on:
+      genesis:
+        condition: service_healthy
+    environment:
+      - NODE_ROLE=normal
+      - P2P_PORT=9001
+      - HTTP_PORT=18346
+      - ADMIN_PORT=18081
+      - GRPC_PORT=50052
+      - DATA_DIR=/data
+      - BOOTSTRAP_ADDR=/ip4/172.20.0.10/tcp/9000
+    volumes:
+      - ./testnet_docker/node1:/data
+    ports:
+      - "9001:9001"
+      - "18346:18346"
+      - "18081:18081"
+    networks:
+      main_net:
+        ipv4_address: 172.20.0.11
+      subnet1:
+        ipv4_address: 172.21.0.11
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18346/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==================== 正常节点2 ====================
+  node2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent_node2
+    hostname: node2
+    depends_on:
+      genesis:
+        condition: service_healthy
+    environment:
+      - NODE_ROLE=normal
+      - P2P_PORT=9002
+      - HTTP_PORT=18347
+      - ADMIN_PORT=18082
+      - GRPC_PORT=50053
+      - DATA_DIR=/data
+      - BOOTSTRAP_ADDR=/ip4/172.20.0.10/tcp/9000
+    volumes:
+      - ./testnet_docker/node2:/data
+    ports:
+      - "9002:9002"
+      - "18347:18347"
+      - "18082:18082"
+    networks:
+      main_net:
+        ipv4_address: 172.20.0.12
+      subnet2:
+        ipv4_address: 172.22.0.12
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18347/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==================== 恶意节点1 (在子网1中) ====================
+  malicious1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent_malicious1
+    hostname: malicious1
+    depends_on:
+      genesis:
+        condition: service_healthy
+    environment:
+      - NODE_ROLE=normal
+      - P2P_PORT=9003
+      - HTTP_PORT=18348
+      - ADMIN_PORT=18083
+      - GRPC_PORT=50054
+      - DATA_DIR=/data
+      - BOOTSTRAP_ADDR=/ip4/172.20.0.10/tcp/9000
+      - IS_MALICIOUS=true
+    volumes:
+      - ./testnet_docker/malicious1:/data
+    ports:
+      - "9003:9003"
+      - "18348:18348"
+      - "18083:18083"
+    networks:
+      main_net:
+        ipv4_address: 172.20.0.13
+      subnet1:
+        ipv4_address: 172.21.0.13
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18348/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==================== 恶意节点2 (在子网2中) ====================
+  malicious2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent_malicious2
+    hostname: malicious2
+    depends_on:
+      genesis:
+        condition: service_healthy
+    environment:
+      - NODE_ROLE=normal
+      - P2P_PORT=9004
+      - HTTP_PORT=18349
+      - ADMIN_PORT=18084
+      - GRPC_PORT=50055
+      - DATA_DIR=/data
+      - BOOTSTRAP_ADDR=/ip4/172.20.0.10/tcp/9000
+      - IS_MALICIOUS=true
+    volumes:
+      - ./testnet_docker/malicious2:/data
+    ports:
+      - "9004:9004"
+      - "18349:18349"
+      - "18084:18084"
+    networks:
+      main_net:
+        ipv4_address: 172.20.0.14
+      subnet2:
+        ipv4_address: 172.22.0.14
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18349/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

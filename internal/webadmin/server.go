@@ -58,7 +58,9 @@ type Server struct {
 	wsHub      *WebSocketHub
 	topology   *TopologyManager
 	handlers   *Handlers
+	opHandlers *OperationHandlers
 	nodeInfo   NodeInfoProvider
+	opsProvider OperationsProvider
 
 	mu      sync.RWMutex
 	running bool
@@ -86,6 +88,37 @@ type NodeInfoProvider interface {
 
 	// GetNetworkStats returns network statistics
 	GetNetworkStats() *NetworkStats
+
+	// ConnectToPeer connects to a peer by multiaddr
+	ConnectToPeer(multiaddr string) error
+
+	// DisconnectPeer disconnects from a peer by ID
+	DisconnectPeer(peerID string) error
+
+	// GetSystemInfo returns system information
+	GetSystemInfo() *SystemInfo
+
+	// GetBootstrapNodes returns the list of bootstrap nodes
+	GetBootstrapNodes() []string
+
+	// AddBootstrapNode adds a bootstrap node
+	AddBootstrapNode(addr string) error
+
+	// RemoveBootstrapNode removes a bootstrap node
+	RemoveBootstrapNode(addr string) error
+}
+
+// SystemInfo represents system information.
+type SystemInfo struct {
+	OS           string  `json:"os"`
+	Arch         string  `json:"arch"`
+	NumCPU       int     `json:"num_cpu"`
+	NumGoroutine int     `json:"num_goroutine"`
+	MemAlloc     uint64  `json:"mem_alloc"`
+	MemTotal     uint64  `json:"mem_total"`
+	MemSys       uint64  `json:"mem_sys"`
+	GoVersion    string  `json:"go_version"`
+	Hostname     string  `json:"hostname"`
 }
 
 // NodeStatus represents the current status of a node.
@@ -148,10 +181,19 @@ func New(config *Config, nodeInfo NodeInfoProvider) *Server {
 	s.wsHub = NewWebSocketHub()
 	s.topology = NewTopologyManager(nodeInfo)
 	s.handlers = NewHandlers(s)
+	s.opHandlers = NewOperationHandlers(s, nil) // 初始化时没有操作提供者
 
 	s.setupRoutes()
 
 	return s
+}
+
+// SetOperationsProvider sets the operations provider for node control APIs.
+func (s *Server) SetOperationsProvider(provider OperationsProvider) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.opsProvider = provider
+	s.opHandlers = NewOperationHandlers(s, provider)
 }
 
 // setupRoutes configures all HTTP routes.
@@ -170,6 +212,44 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/api/stats", s.wrapHandler(s.handlers.HandleStats, true))
 	s.mux.HandleFunc("/api/auth/token/refresh", s.wrapHandler(s.handlers.HandleTokenRefresh, true))
 	s.mux.HandleFunc("/api/auth/logout", s.wrapHandler(s.handlers.HandleLogout, true))
+
+	// ========== 节点操作 API ==========
+	// 邻居管理
+	s.mux.HandleFunc("/api/neighbor/list", s.wrapOperationHandler(s.opHandlers.HandleNeighborList, true))
+	s.mux.HandleFunc("/api/neighbor/best", s.wrapOperationHandler(s.opHandlers.HandleNeighborBest, true))
+	s.mux.HandleFunc("/api/neighbor/add", s.wrapOperationHandler(s.opHandlers.HandleNeighborAdd, true))
+	s.mux.HandleFunc("/api/neighbor/remove", s.wrapOperationHandler(s.opHandlers.HandleNeighborRemove, true))
+	s.mux.HandleFunc("/api/neighbor/ping", s.wrapOperationHandler(s.opHandlers.HandleNeighborPing, true))
+
+	// 邮箱操作
+	s.mux.HandleFunc("/api/mailbox/send", s.wrapOperationHandler(s.opHandlers.HandleMailboxSend, true))
+	s.mux.HandleFunc("/api/mailbox/inbox", s.wrapOperationHandler(s.opHandlers.HandleMailboxInbox, true))
+	s.mux.HandleFunc("/api/mailbox/outbox", s.wrapOperationHandler(s.opHandlers.HandleMailboxOutbox, true))
+	s.mux.HandleFunc("/api/mailbox/read/", s.wrapOperationHandler(s.opHandlers.HandleMailboxRead, true))
+	s.mux.HandleFunc("/api/mailbox/mark-read", s.wrapOperationHandler(s.opHandlers.HandleMailboxMarkRead, true))
+	s.mux.HandleFunc("/api/mailbox/delete", s.wrapOperationHandler(s.opHandlers.HandleMailboxDelete, true))
+
+	// 留言板操作
+	s.mux.HandleFunc("/api/bulletin/publish", s.wrapOperationHandler(s.opHandlers.HandleBulletinPublish, true))
+	s.mux.HandleFunc("/api/bulletin/topic/", s.wrapOperationHandler(s.opHandlers.HandleBulletinByTopic, true))
+	s.mux.HandleFunc("/api/bulletin/author/", s.wrapOperationHandler(s.opHandlers.HandleBulletinByAuthor, true))
+	s.mux.HandleFunc("/api/bulletin/search", s.wrapOperationHandler(s.opHandlers.HandleBulletinSearch, true))
+	s.mux.HandleFunc("/api/bulletin/subscribe", s.wrapOperationHandler(s.opHandlers.HandleBulletinSubscribe, true))
+	s.mux.HandleFunc("/api/bulletin/unsubscribe", s.wrapOperationHandler(s.opHandlers.HandleBulletinUnsubscribe, true))
+	s.mux.HandleFunc("/api/bulletin/revoke", s.wrapOperationHandler(s.opHandlers.HandleBulletinRevoke, true))
+	s.mux.HandleFunc("/api/bulletin/subscriptions", s.wrapOperationHandler(s.opHandlers.HandleBulletinSubscriptions, true))
+
+	// 声誉查询
+	s.mux.HandleFunc("/api/reputation/query", s.wrapOperationHandler(s.opHandlers.HandleReputationQuery, true))
+	s.mux.HandleFunc("/api/reputation/ranking", s.wrapOperationHandler(s.opHandlers.HandleReputationRanking, true))
+
+	// 消息发送
+	s.mux.HandleFunc("/api/message/send", s.wrapOperationHandler(s.opHandlers.HandleMessageSend, true))
+	s.mux.HandleFunc("/api/message/broadcast", s.wrapOperationHandler(s.opHandlers.HandleMessageBroadcast, true))
+	
+	// 安全相关
+	s.mux.HandleFunc("/api/security/status", s.wrapOperationHandler(s.opHandlers.HandleSecurityStatus, true))
+	s.mux.HandleFunc("/api/security/report", s.wrapOperationHandler(s.opHandlers.HandleSecurityReport, true))
 	
 	// WebSocket routes
 	s.mux.HandleFunc("/ws/topology", s.wsAuthMiddleware(s.handlers.HandleWSTopology))
@@ -178,6 +258,40 @@ func (s *Server) setupRoutes() {
 
 	// Static files (Vue.js app)
 	s.setupStaticFiles()
+}
+
+// wrapOperationHandler wraps operation handler with CORS and auth middleware.
+func (s *Server) wrapOperationHandler(handler http.HandlerFunc, requireAuth bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// CORS headers
+		if s.config.EnableCORS {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		}
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Auth check
+		if requireAuth && !s.checkAuth(r) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// 确保使用最新的操作处理器
+		s.mu.RLock()
+		opHandler := s.opHandlers
+		s.mu.RUnlock()
+
+		if opHandler != nil && opHandler.provider != nil {
+			handler(w, r)
+		} else {
+			WriteError(w, http.StatusServiceUnavailable, "Operations provider not configured")
+		}
+	}
 }
 
 // wrapHandler wraps a handler with CORS and optional auth middleware.
@@ -213,9 +327,9 @@ func (s *Server) checkAuth(r *http.Request) bool {
 		return true
 	}
 
-	// Check session cookie
-	cookie, err := r.Cookie(SessionCookieName)
-	if err == nil && s.auth.ValidateSession(cookie.Value) {
+	// Check token cookie
+	cookie, err := r.Cookie(TokenCookieName)
+	if err == nil && s.auth.ValidateToken(cookie.Value) {
 		return true
 	}
 
@@ -231,11 +345,14 @@ func (s *Server) checkAuth(r *http.Request) bool {
 	return false
 }
 
-// setupStaticFiles configures static file serving.
+// setupStaticFiles configures static file serving with SPA fallback.
 func (s *Server) setupStaticFiles() {
 	if s.config.StaticPath != "" {
-		// Serve from disk (development mode)
-		s.mux.Handle("/", http.FileServer(http.Dir(s.config.StaticPath)))
+		// Serve from disk (development mode) with SPA fallback
+		s.mux.Handle("/", &spaHandler{
+			staticPath: s.config.StaticPath,
+			indexPath:  "index.html",
+		})
 	} else {
 		// Serve embedded files (production mode)
 		subFS, err := fs.Sub(staticFiles, "static")
@@ -244,8 +361,77 @@ func (s *Server) setupStaticFiles() {
 			s.mux.HandleFunc("/", s.handlers.HandleIndex)
 			return
 		}
-		s.mux.Handle("/", http.FileServer(http.FS(subFS)))
+		s.mux.Handle("/", &spaEmbedHandler{
+			fs:        http.FS(subFS),
+			indexHTML: mustReadIndex(subFS),
+		})
 	}
+}
+
+// spaHandler serves static files with SPA fallback for disk-based files.
+type spaHandler struct {
+	staticPath string
+	indexPath  string
+}
+
+func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Get the absolute path to prevent directory traversal
+	path := r.URL.Path
+	if path == "/" {
+		path = "/index.html"
+	}
+
+	// Try to serve the static file
+	if _, err := http.Dir(h.staticPath).Open(path); err == nil {
+		http.FileServer(http.Dir(h.staticPath)).ServeHTTP(w, r)
+		return
+	}
+
+	// For SPA: serve index.html for all non-file routes
+	http.ServeFile(w, r, h.staticPath+"/"+h.indexPath)
+}
+
+// spaEmbedHandler serves embedded static files with SPA fallback.
+type spaEmbedHandler struct {
+	fs        http.FileSystem
+	indexHTML []byte
+}
+
+func (h *spaEmbedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+
+	// Try to open the file
+	f, err := h.fs.Open(path)
+	if err == nil {
+		defer f.Close()
+		stat, err := f.Stat()
+		if err == nil && !stat.IsDir() {
+			// File exists, serve it
+			http.FileServer(h.fs).ServeHTTP(w, r)
+			return
+		}
+	}
+
+	// For SPA routes (e.g., /login, /dashboard), serve index.html
+	// Don't fallback for API or WS routes
+	if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/ws/") {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Serve index.html for SPA routing
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(h.indexHTML)
+}
+
+// mustReadIndex reads index.html from the embedded filesystem.
+func mustReadIndex(fsys fs.FS) []byte {
+	data, err := fs.ReadFile(fsys, "index.html")
+	if err != nil {
+		return []byte("<!DOCTYPE html><html><body><h1>DAAN Admin</h1><p>Frontend not built.</p></body></html>")
+	}
+	return data
 }
 
 // wsAuthMiddleware wraps a WebSocket handler with authentication.
@@ -258,9 +444,9 @@ func (s *Server) wsAuthMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// Check session cookie
-		cookie, err := r.Cookie(SessionCookieName)
-		if err == nil && s.auth.ValidateSession(cookie.Value) {
+		// Check token cookie
+		cookie, err := r.Cookie(TokenCookieName)
+		if err == nil && s.auth.ValidateToken(cookie.Value) {
 			handler(w, r)
 			return
 		}
@@ -337,10 +523,14 @@ func (s *Server) IsRunning() bool {
 
 // GetAdminURL returns the admin panel URL with token.
 func (s *Server) GetAdminURL() string {
-	if s.config.AdminToken != "" {
-		return fmt.Sprintf("http://%s?token=%s", s.config.ListenAddr, s.config.AdminToken)
+	addr := s.config.ListenAddr
+	if addr[0] == ':' {
+		addr = "localhost" + addr
 	}
-	return fmt.Sprintf("http://%s", s.config.ListenAddr)
+	if s.config.AdminToken != "" {
+		return fmt.Sprintf("http://%s/login?token=%s", addr, s.config.AdminToken)
+	}
+	return fmt.Sprintf("http://%s", addr)
 }
 
 // WriteJSON writes a JSON response.

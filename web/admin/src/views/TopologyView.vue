@@ -6,7 +6,7 @@ import { GraphChart } from 'echarts/charts'
 import { TooltipComponent, LegendComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import api, { createWebSocket, type Topology, type TopologyNode, type TopologyLink } from '@/api'
-import { Refresh, FullScreen } from '@element-plus/icons-vue'
+import { Refresh } from '@element-plus/icons-vue'
 
 use([CanvasRenderer, GraphChart, TooltipComponent, LegendComponent])
 

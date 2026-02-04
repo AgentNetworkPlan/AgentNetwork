@@ -10,7 +10,10 @@ import {
   Document,
   List,
   InfoFilled,
-  SwitchButton
+  SwitchButton,
+  User,
+  Message,
+  ChatDotRound
 } from '@element-plus/icons-vue'
 
 const authStore = useAuthStore()
@@ -20,6 +23,9 @@ const isCollapse = ref(false)
 const menuItems = [
   { index: '/dashboard', title: '仪表盘', icon: HomeFilled },
   { index: '/topology', title: '网络拓扑', icon: Connection },
+  { index: '/neighbors', title: '邻居管理', icon: User },
+  { index: '/mailbox', title: '邮箱', icon: Message },
+  { index: '/bulletin', title: '留言板', icon: ChatDotRound },
   { index: '/endpoints', title: 'API 浏览器', icon: Document },
   { index: '/logs', title: '日志查看', icon: List },
   { index: '/about', title: '关于', icon: InfoFilled },

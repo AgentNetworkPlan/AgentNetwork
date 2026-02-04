@@ -11,20 +11,21 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --fix"
   },
   "dependencies": {
-    "vue": "^3.4.21",
-    "vue-router": "^4.3.0",
-    "pinia": "^2.1.7",
-    "element-plus": "^2.6.1",
-    "echarts": "^5.5.0",
-    "vue-echarts": "^6.6.8",
+    "@element-plus/icons-vue": "^2.3.1",
     "axios": "^1.6.7",
-    "@element-plus/icons-vue": "^2.3.1"
+    "echarts": "^5.5.0",
+    "element-plus": "^2.6.1",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.21",
+    "vue-echarts": "^6.6.8",
+    "vue-router": "^4.3.0"
   },
   "devDependencies": {
+    "@types/node": "^20.11.20",
     "@vitejs/plugin-vue": "^5.0.4",
+    "@vue/tsconfig": "^0.8.1",
     "typescript": "^5.3.3",
     "vite": "^5.1.4",
-    "vue-tsc": "^2.0.4",
-    "@types/node": "^20.11.20"
+    "vue-tsc": "^2.0.4"
   }
 }

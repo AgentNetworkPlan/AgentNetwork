@@ -3,12 +3,13 @@ package webadmin
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 )
 
-// SessionCookieName is the name of the session cookie.
-const SessionCookieName = "daan_session"
+// TokenCookieName is the name of the token cookie.
+const TokenCookieName = "daan_token"
 
 // GenerateToken generates a new random admin token.
 func GenerateToken() string {
@@ -95,21 +96,26 @@ func (am *AuthManager) CreateSession(token, ipAddress, userAgent string) (*Sessi
 
 // ValidateSession validates a session ID.
 func (am *AuthManager) ValidateSession(sessionID string) bool {
+	fmt.Printf("[DEBUG] ValidateSession called with sessionID: %s\n", sessionID)
 	am.mu.RLock()
 	session, exists := am.sessions[sessionID]
 	am.mu.RUnlock()
 
+	fmt.Printf("[DEBUG] Session exists: %v\n", exists)
 	if !exists {
+		fmt.Printf("[DEBUG] Available sessions: %+v\n", am.sessions)
 		return false
 	}
 
 	if session.IsExpired() {
+		fmt.Printf("[DEBUG] Session expired at %v\n", session.ExpiresAt)
 		am.mu.Lock()
 		delete(am.sessions, sessionID)
 		am.mu.Unlock()
 		return false
 	}
 
+	fmt.Printf("[DEBUG] Session is valid\n")
 	return true
 }
 
