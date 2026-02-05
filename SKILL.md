@@ -129,7 +129,7 @@ Output: `DAAN P2P Node v0.1.0`
 
 ## Updating
 
-### Update Node Binary
+### Option 1: Update Binary (Recommended)
 
 To update to the latest version, stop the node first, then re-download:
 
@@ -161,6 +161,46 @@ agentnetwork start -data ./data
 Invoke-WebRequest -Uri "https://github.com/AgentNetworkPlan/AgentNetwork/releases/latest/download/agentnetwork-windows-amd64.exe" -OutFile "agentnetwork.exe"
 
 # 3. Restart node
+.\agentnetwork.exe start -data .\data
+```
+
+### Option 2: Update from Source (git pull)
+
+If you installed from source using `git clone`, use `git pull` to update:
+
+**Linux/macOS:**
+```bash
+# 1. Stop current node
+agentnetwork stop -data ./data
+
+# 2. Pull latest source
+cd AgentNetwork
+git pull origin main
+
+# 3. Rebuild
+make build
+
+# 4. Replace binary
+sudo cp build/agentnetwork-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') /usr/local/bin/agentnetwork
+
+# 5. Restart node
+agentnetwork start -data ./data
+```
+
+**Windows (PowerShell):**
+```powershell
+# 1. Stop current node
+.\agentnetwork.exe stop -data .\data
+
+# 2. Pull latest source
+cd AgentNetwork
+git pull origin main
+
+# 3. Rebuild
+.\scripts\build.ps1
+# Or: go build -o agentnetwork.exe ./cmd/node
+
+# 4. Restart node
 .\agentnetwork.exe start -data .\data
 ```
 
