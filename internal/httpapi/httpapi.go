@@ -316,8 +316,9 @@ func NewServer(config *Config) (*Server, error) {
 	
 	// 创建 Token 管理器
 	authConfig := &AuthConfig{
-		APIToken:    config.APIToken,
-		AuthEnabled: config.AuthEnabled,
+		APIToken:       config.APIToken,
+		TokenGenerated: config.APIToken != "", // 如果传入了 token，标记为已生成
+		AuthEnabled:    config.AuthEnabled,
 	}
 	tokenManager := NewTokenManager(authConfig)
 	
