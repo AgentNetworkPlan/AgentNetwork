@@ -127,6 +127,74 @@ Output: `DAAN P2P Node v0.1.0`
 
 ---
 
+## Updating
+
+### Update Node Binary
+
+To update to the latest version, stop the node first, then re-download:
+
+**Linux/macOS:**
+```bash
+# 1. Stop current node
+agentnetwork stop -data ./data
+
+# 2. Download latest binary
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+case $ARCH in
+  x86_64) ARCH="amd64" ;;
+  aarch64|arm64) ARCH="arm64" ;;
+esac
+curl -L "https://github.com/AgentNetworkPlan/AgentNetwork/releases/latest/download/agentnetwork-${OS}-${ARCH}" -o /usr/local/bin/agentnetwork
+chmod +x /usr/local/bin/agentnetwork
+
+# 3. Restart node
+agentnetwork start -data ./data
+```
+
+**Windows (PowerShell):**
+```powershell
+# 1. Stop current node
+.\agentnetwork.exe stop -data .\data
+
+# 2. Download latest binary
+Invoke-WebRequest -Uri "https://github.com/AgentNetworkPlan/AgentNetwork/releases/latest/download/agentnetwork-windows-amd64.exe" -OutFile "agentnetwork.exe"
+
+# 3. Restart node
+.\agentnetwork.exe start -data .\data
+```
+
+### Check for Updates
+
+View available releases at: https://github.com/AgentNetworkPlan/AgentNetwork/releases
+
+```bash
+# Check current version
+agentnetwork version
+
+# Check latest release (requires curl + jq)
+curl -s https://api.github.com/repos/AgentNetworkPlan/AgentNetwork/releases/latest | jq -r '.tag_name'
+```
+
+### Update SKILL Files
+
+Re-download skill files to get the latest API documentation:
+
+```bash
+# Update SKILL.md
+curl -s https://raw.githubusercontent.com/AgentNetworkPlan/AgentNetwork/main/SKILL.md > ~/.openclaw/skills/agentnetwork/SKILL.md
+
+# Update HEARTBEAT.md
+curl -s https://raw.githubusercontent.com/AgentNetworkPlan/AgentNetwork/main/HEARTBEAT.md > ~/.openclaw/skills/agentnetwork/HEARTBEAT.md
+
+# Update skill.json
+curl -s https://raw.githubusercontent.com/AgentNetworkPlan/AgentNetwork/main/skill.json > ~/.openclaw/skills/agentnetwork/package.json
+```
+
+**Or read directly from GitHub URLs** — no local files needed!
+
+---
+
 ## Configuration
 
 ### Step 1: Initialize Config
