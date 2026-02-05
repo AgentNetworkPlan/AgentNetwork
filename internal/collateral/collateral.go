@@ -96,22 +96,24 @@ type SlashEvent struct {
 
 // CollateralManager 抵押物管理器
 type CollateralManager struct {
-	collaterals  map[string]*Collateral     // collateralID -> Collateral
-	byOwner      map[string][]string        // owner -> []collateralID
-	slashHistory map[string][]*SlashEvent   // owner -> []SlashEvent
-	totalSlashed map[string]float64         // owner -> total slashed amount
-	idCounter    int64                      // ID计数器
-	mu           sync.RWMutex
+	collaterals   map[string]*Collateral     // collateralID -> Collateral
+	byOwner       map[string][]string        // owner -> []collateralID
+	byNodePurpose map[string]string          // Task44: NodeID+Purpose -> CollateralID (for auditor stake binding)
+	slashHistory  map[string][]*SlashEvent   // owner -> []SlashEvent
+	totalSlashed  map[string]float64         // owner -> total slashed amount
+	idCounter     int64                       // ID计数器
+	mu            sync.RWMutex
 }
 
 // NewCollateralManager 创建新的抵押物管理器
 func NewCollateralManager() *CollateralManager {
 	return &CollateralManager{
-		collaterals:  make(map[string]*Collateral),
-		byOwner:      make(map[string][]string),
-		slashHistory: make(map[string][]*SlashEvent),
-		totalSlashed: make(map[string]float64),
-		idCounter:    0,
+		collaterals:   make(map[string]*Collateral),
+		byOwner:       make(map[string][]string),
+		byNodePurpose: make(map[string]string),
+		slashHistory:  make(map[string][]*SlashEvent),
+		totalSlashed:  make(map[string]float64),
+		idCounter:     0,
 	}
 }
 
@@ -144,6 +146,9 @@ func (cm *CollateralManager) CreateCollateral(owner, collateralType, purpose str
 
 	cm.collaterals[collateral.ID] = collateral
 	cm.byOwner[owner] = append(cm.byOwner[owner], collateral.ID)
+	// Task44: 建立NodeID+Purpose到CollateralID映射
+	key := makeNodePurposeKey(owner, purpose)
+	cm.byNodePurpose[key] = collateral.ID
 
 	return collateral, nil
 }
@@ -462,11 +467,42 @@ func generateCollateralID(owner string, t time.Time, counter int64) string {
 	return fmt.Sprintf("col_%s_%d_%d", owner[:min(8, len(owner))], t.UnixNano(), counter)
 }
 
+// Task44: 生成NodeID+Purpose到CollateralID的映射键
+func makeNodePurposeKey(nodeID, purpose string) string {
+	return nodeID + "::" + purpose
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
+}
+
+// GetCollateralByNodePurpose Task44: 根据节点ID和用途查询抵押物
+func (cm *CollateralManager) GetCollateralByNodePurpose(nodeID, purpose string) (*Collateral, error) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	key := makeNodePurposeKey(nodeID, purpose)
+	collateralID, ok := cm.byNodePurpose[key]
+	if !ok {
+		return nil, ErrCollateralNotFound
+	}
+	c, ok := cm.collaterals[collateralID]
+	if !ok {
+		return nil, ErrCollateralNotFound
+	}
+	return c, nil
+}
+
+// SlashByNodePurpose Task44: 根据节点ID和用途惩罚抵押物（审计偏离闭环专用）
+func (cm *CollateralManager) SlashByNodePurpose(nodeID, purpose, reason string, evidence []string, slashRatio float64) (*SlashEvent, error) {
+	c, err := cm.GetCollateralByNodePurpose(nodeID, purpose)
+	if err != nil {
+		return nil, err
+	}
+	return cm.SlashCollateral(c.ID, reason, evidence, slashRatio)
 }
 
 // GuaranteePool 担保池

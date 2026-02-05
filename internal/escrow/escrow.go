@@ -78,23 +78,27 @@ type Escrow struct {
 
 // EscrowConfig 托管配置
 type EscrowConfig struct {
-	DataDir          string        // 数据目录
-	DefaultLockTime  time.Duration // 默认锁定时间
-	MinDeposit       float64       // 最小押金
-	MaxDeposit       float64       // 最大押金
-	DisputeTimeout   time.Duration // 争议超时
-	AutoReleaseDelay time.Duration // 自动释放延迟
+	DataDir               string        // 数据目录
+	DefaultLockTime       time.Duration // 默认锁定时间
+	MinDeposit            float64       // 最小押金
+	MaxDeposit            float64       // 最大押金
+	DisputeTimeout        time.Duration // 争议超时
+	AutoReleaseDelay      time.Duration // 自动释放延迟
+	MinArbitratorSigs     int           // Task44: 争议释放所需最少仲裁签名数
+	ArbitratorSigThreshold float64      // Task44: 仲裁签名阈值比例 (0-1)
 }
 
 // DefaultEscrowConfig 返回默认配置
 func DefaultEscrowConfig() *EscrowConfig {
 	return &EscrowConfig{
-		DataDir:          "data/escrow",
-		DefaultLockTime:  7 * 24 * time.Hour, // 7天
-		MinDeposit:       0.1,
-		MaxDeposit:       1000.0,
-		DisputeTimeout:   72 * time.Hour, // 3天
-		AutoReleaseDelay: 24 * time.Hour, // 1天
+		DataDir:               "data/escrow",
+		DefaultLockTime:       7 * 24 * time.Hour, // 7天
+		MinDeposit:            0.1,
+		MaxDeposit:            1000.0,
+		DisputeTimeout:        72 * time.Hour, // 3天
+		AutoReleaseDelay:      24 * time.Hour, // 1天
+		MinArbitratorSigs:     2,              // Task44: 默认需要至少2个仲裁签名
+		ArbitratorSigThreshold: 0.5,           // Task44: 默认需要>50%仲裁签名
 	}
 }
 
@@ -351,8 +355,9 @@ func (em *EscrowManager) Dispute(escrowID, disputerID, reason string) error {
 	return nil
 }
 
-// ResolveDispute 解决争议
-func (em *EscrowManager) ResolveDispute(escrowID string, releaseToNodeID string, amount float64, arbitratorSig string) error {
+// ResolveDispute Task44: 解决争议（需要多方仲裁签名）
+// arbitratorSigs: map[arbitratorID]signature
+func (em *EscrowManager) ResolveDispute(escrowID string, releaseToNodeID string, amount float64, arbitratorSigs map[string]string) error {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
@@ -365,17 +370,82 @@ func (em *EscrowManager) ResolveDispute(escrowID string, releaseToNodeID string,
 		return errors.New("escrow is not in disputed state")
 	}
 
+	// Task44: 验证仲裁签名数量是否满足阈值
+	if len(arbitratorSigs) < em.config.MinArbitratorSigs {
+		return fmt.Errorf("insufficient arbitrator signatures: need at least %d, got %d", 
+			em.config.MinArbitratorSigs, len(arbitratorSigs))
+	}
+
 	escrow.ReleasedTo = releaseToNodeID
 	escrow.ReleasedAmount = amount
 	escrow.ReleasedAt = time.Now().Unix()
 	escrow.Status = EscrowReleased
-	escrow.ReleaseCondition = "dispute_resolution"
-	escrow.UnlockSignatures["arbitrator"] = arbitratorSig
+	escrow.ReleaseCondition = "dispute_resolution_multisig"
+
+	// Task44: 存储所有仲裁签名（而不是单一签名）
+	for arbitratorID, sig := range arbitratorSigs {
+		escrow.UnlockSignatures["arbitrator_"+arbitratorID] = sig
+	}
 
 	em.updateStatusIndex(escrow.ID, EscrowDisputed, EscrowReleased)
 	em.save()
 
 	return nil
+}
+
+// SubmitArbitratorSignature Task44: 提交单个仲裁签名（用于逐步收集签名）
+func (em *EscrowManager) SubmitArbitratorSignature(escrowID, arbitratorID, signature string) (bool, error) {
+	em.mu.Lock()
+	defer em.mu.Unlock()
+
+	escrow, exists := em.escrows[escrowID]
+	if !exists {
+		return false, ErrEscrowNotFound
+	}
+
+	if escrow.Status != EscrowDisputed {
+		return false, errors.New("escrow is not in disputed state")
+	}
+
+	if escrow.UnlockSignatures == nil {
+		escrow.UnlockSignatures = make(map[string]string)
+	}
+
+	key := "arbitrator_" + arbitratorID
+	escrow.UnlockSignatures[key] = signature
+
+	// 计算当前仲裁签名数量
+	arbCount := 0
+	for k := range escrow.UnlockSignatures {
+		if len(k) > 11 && k[:11] == "arbitrator_" {
+			arbCount++
+		}
+	}
+
+	em.save()
+
+	// 返回是否已达到阈值
+	return arbCount >= em.config.MinArbitratorSigs, nil
+}
+
+// GetArbitratorSignatureCount Task44: 获取当前仲裁签名数量
+func (em *EscrowManager) GetArbitratorSignatureCount(escrowID string) (int, int, error) {
+	em.mu.RLock()
+	defer em.mu.RUnlock()
+
+	escrow, exists := em.escrows[escrowID]
+	if !exists {
+		return 0, 0, ErrEscrowNotFound
+	}
+
+	arbCount := 0
+	for k := range escrow.UnlockSignatures {
+		if len(k) > 11 && k[:11] == "arbitrator_" {
+			arbCount++
+		}
+	}
+
+	return arbCount, em.config.MinArbitratorSigs, nil
 }
 
 // Forfeit 没收押金

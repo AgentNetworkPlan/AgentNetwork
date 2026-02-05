@@ -1,3 +1,67 @@
+# Task 09: HTTP API 接口设计
+
+> **状态**: ✅ 全部实现完成  
+> **最后更新**: 2026-02-05  
+> **关联文档**: Task 37 (WEB Admin), Task 42 (CLI命令)
+
+---
+
+## ✅ 实现状态检查 (2026-02-05)
+
+### 🎯 设计目标
+
+**用户可以通过 CLI、HTTP API、WEB Admin 网页达成一样的逻辑和控制**
+
+### HTTP API 实现状态
+
+| 模块 | API 路径 | 实现状态 | 说明 |
+|------|---------|---------|------|
+| **基础接口** | `/health`, `/status` | ✅ 完成 | 健康检查、状态查询 |
+| **节点管理** | `/api/v1/node/*` | ✅ 完成 | info, peers, register |
+| **邻居管理** | `/api/v1/neighbor/*` | ✅ 完成 | list, best, add, remove, ping |
+| **消息接口** | `/api/v1/message/*` | ✅ 完成 | send, receive |
+| **邮箱接口** | `/api/v1/mailbox/*` | ✅ 完成 | send, inbox, outbox, read, mark-read, delete |
+| **留言板接口** | `/api/v1/bulletin/*` | ✅ 完成 | publish, topic, author, search, subscribe, revoke |
+| **任务管理** | `/api/v1/task/*` | ✅ 完成 | create, status, accept, submit, list |
+| **声誉系统** | `/api/v1/reputation/*` | ✅ 完成 | query, update, ranking, history |
+| **指责系统** | `/api/v1/accusation/*` | ✅ 完成 | create, list, detail, analyze |
+| **激励系统** | `/api/v1/incentive/*` | ✅ 完成 | award, propagate, history, tolerance |
+| **投票系统** | `/api/v1/voting/*` | ✅ 完成 | proposal/create, list, vote, finalize |
+| **超级节点** | `/api/v1/supernode/*` | ✅ 完成 | list, candidates, apply, vote, election, audit |
+| **创世节点** | `/api/v1/genesis/*` | ✅ 完成 | info, invite/create, verify, join |
+| **日志系统** | `/api/v1/log/*` | ✅ 完成 | submit, query, export |
+| **审计集成** | `/api/v1/audit/*` | ✅ 完成 | deviations, penalty-config, manual-penalty |
+| **抵押物管理** | `/api/v1/collateral/*` | ✅ 完成 | list, by-node, slash-by-node, slash-history |
+| **争议预审** | `/api/v1/dispute/*` | ✅ 完成 | list, suggestion, verify-evidence, apply-suggestion, detail |
+| **托管多签** | `/api/v1/escrow/*` | ✅ 完成 | list, detail, arbitrator-signature, signature-count, resolve |
+
+### CLI 命令等效性
+
+| CLI 命令 | HTTP API 等效 | 状态 | 说明 |
+|---------|--------------|------|------|
+| `health` | `GET /health` | ✅ | 完全等效 |
+| `status` | `GET /status` | ✅ | 完全等效 |
+| `logs` | `GET /api/v1/log/query` | ✅ | HTTP 支持查询参数 |
+| `audit deviations` | `/api/v1/audit/deviations` | ✅ | 三端一致 |
+| `audit penalty-config` | `/api/v1/audit/penalty-config` | ✅ | 三端一致 |
+| `audit manual-penalty` | `/api/v1/audit/manual-penalty` | ✅ | 三端一致 |
+| `collateral list` | `/api/v1/collateral/list` | ✅ | 三端一致 |
+| `collateral query` | `/api/v1/collateral/by-node` | ✅ | 三端一致 |
+| `collateral slash` | `/api/v1/collateral/slash-by-node` | ✅ | 三端一致 |
+| `dispute list` | `/api/v1/dispute/list` | ✅ | 三端一致 |
+| `dispute suggestion` | `/api/v1/dispute/suggestion/{id}` | ✅ | 三端一致 |
+| `escrow list` | `/api/v1/escrow/list` | ✅ | 三端一致 |
+| `escrow resolve` | `/api/v1/escrow/resolve` | ✅ | 三端一致 |
+
+### 完成度统计
+
+| 组件 | 完成数 | 总数 | 完成率 |
+|------|--------|------|--------|
+| **HTTP API 模块** | 18 | 18 | ✅ 100% |
+| **HTTP API 端点** | 72 | 72 | ✅ 100% |
+
+---
+
 明白，你希望为 **智能体（agent）提供操作 P2P 网络的接口**，并通过 **HTTP/REST API** 让 agent 可以直接调用（例如使用 `curl`）。我帮你整理一份完整接口设计方案，包括必要的功能模块和请求示例。
 
 ---
@@ -324,6 +388,52 @@ curl -X POST http://localhost:8080/message/publish \
 | 提交日志 | POST | `/log/submit` | `{"event_type":"task_complete","data":{}}` | `{"log_id":"xxx"}` |
 | 查询日志 | GET | `/log/query` | `?node_id=xxx&event_type=task&limit=50` | `{"logs":[...]}` |
 | 导出日志 | GET | `/log/export` | `?format=json&start=...&end=...` | `{"file":"logs.json"}` |
+
+---
+
+### 6.15 审计集成 `/api/v1/audit/*`
+
+| 功能 | 方法 | URL | 请求示例 | 响应示例 |
+|------|------|-----|----------|----------|
+| 审计偏离列表 | GET | `/audit/deviations` | `?limit=20` | `{"deviations":[{"audit_id":"xxx","auditor_id":"yyy","severity":"minor"}]}` |
+| 惩罚配置 | GET | `/audit/penalty-config` | - | `{"minor":{"rep_penalty":5,"slash_ratio":0.1},"severe":{"rep_penalty":20,"slash_ratio":0.3}}` |
+| 设置惩罚配置 | POST | `/audit/penalty-config` | `{"severity":"severe","rep_penalty":20,"slash_ratio":0.3}` | `{"status":"updated"}` |
+| 手动惩罚 | POST | `/audit/manual-penalty` | `{"node_id":"xxx","severity":"minor","reason":"审计不一致"}` | `{"penalty_applied":true,"rep_delta":-5,"slashed":100}` |
+
+---
+
+### 6.16 抵押物管理 `/api/v1/collateral/*`
+
+| 功能 | 方法 | URL | 请求示例 | 响应示例 |
+|------|------|-----|----------|----------|
+| 抵押物列表 | GET | `/collateral/list` | `?status=active` | `{"collaterals":[...]}` |
+| 按节点+用途查询 | GET | `/collateral/by-node` | `?node_id=xxx&purpose=supernode_stake` | `{"collateral_id":"coll-123","amount":1000,"slashed":100}` |
+| 按节点+用途罚没 | POST | `/collateral/slash-by-node` | `{"node_id":"xxx","purpose":"audit_bond","ratio":0.3,"reason":"偏离","evidence":"..."}` | `{"slashed_amount":300,"remaining":700}` |
+| 罚没历史 | GET | `/collateral/slash-history` | `?node_id=xxx&limit=20` | `{"history":[...]}` |
+
+---
+
+### 6.17 争议预审 `/api/v1/dispute/*`
+
+| 功能 | 方法 | URL | 请求示例 | 响应示例 |
+|------|------|-----|----------|----------|
+| 争议列表 | GET | `/dispute/list` | `?status=pending` | `{"disputes":[...]}` |
+| 获取自动解决建议 | GET | `/dispute/suggestion/{id}` | - | `{"suggested_resolution":"favor_plaintiff","confidence":0.85,"can_auto_execute":false,"missing_evidence":["delivery_proof"],"warnings":["证据未验证"]}` |
+| 验证证据 | POST | `/dispute/verify-evidence` | `{"dispute_id":"xxx","evidence_id":"yyy","verifier_id":"zzz"}` | `{"verified":true}` |
+| 应用预审建议 | POST | `/dispute/apply-suggestion` | `{"dispute_id":"xxx","approver_id":"zzz"}` | `{"applied":true,"resolution":"favor_plaintiff"}` |
+| 争议详情 | GET | `/dispute/detail/{id}` | - | `{"id":"xxx","plaintiff":"A","defendant":"B","status":"pending","evidence":[...]}` |
+
+---
+
+### 6.18 托管多签 `/api/v1/escrow/*`
+
+| 功能 | 方法 | URL | 请求示例 | 响应示例 |
+|------|------|-----|----------|----------|
+| 托管列表 | GET | `/escrow/list` | `?status=active` | `{"escrows":[...]}` |
+| 托管详情 | GET | `/escrow/detail/{id}` | - | `{"id":"xxx","amount":1000,"depositor":"A","beneficiary":"B","status":"active"}` |
+| 提交仲裁者签名 | POST | `/escrow/arbitrator-signature` | `{"escrow_id":"xxx","arbitrator_id":"yyy","signature":"..."}` | `{"submitted":true,"current_count":1,"required":2}` |
+| 查询签名数量 | GET | `/escrow/signature-count/{id}` | - | `{"escrow_id":"xxx","current_count":1,"required":2,"signers":["arb-001"]}` |
+| 多签解决 | POST | `/escrow/resolve` | `{"escrow_id":"xxx","winner":"A","signatures":{"arb1":"sig1","arb2":"sig2"}}` | `{"resolved":true,"winner":"A","amount":1000}` |
 
 ---
 

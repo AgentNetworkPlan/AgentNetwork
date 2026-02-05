@@ -236,9 +236,10 @@ func TestEscrowDispute(t *testing.T) {
 
 func TestEscrowResolveDispute(t *testing.T) {
 	em := NewEscrowManager(&EscrowConfig{
-		DataDir:    t.TempDir(),
-		MinDeposit: 0.1,
-		MaxDeposit: 1000.0,
+		DataDir:           t.TempDir(),
+		MinDeposit:        0.1,
+		MaxDeposit:        1000.0,
+		MinArbitratorSigs: 2, // Task44: 需要2个仲裁签名
 	})
 
 	escrow, _ := em.CreateEscrow("task1", map[string]float64{
@@ -250,8 +251,12 @@ func TestEscrowResolveDispute(t *testing.T) {
 	em.Deposit(escrow.ID, "executor", 5.0, "sig2")
 	em.Dispute(escrow.ID, "requester", "Issue")
 
-	// Resolve dispute
-	err := em.ResolveDispute(escrow.ID, "executor", 10.0, "arbitrator_sig")
+	// Task44: Resolve dispute with multiple arbitrator signatures
+	arbitratorSigs := map[string]string{
+		"arb1": "arbitrator_sig_1",
+		"arb2": "arbitrator_sig_2",
+	}
+	err := em.ResolveDispute(escrow.ID, "executor", 10.0, arbitratorSigs)
 	if err != nil {
 		t.Errorf("ResolveDispute failed: %v", err)
 	}
@@ -261,8 +266,8 @@ func TestEscrowResolveDispute(t *testing.T) {
 		t.Errorf("Status should be released, got %s", updatedEscrow.Status)
 	}
 
-	if updatedEscrow.ReleaseCondition != "dispute_resolution" {
-		t.Errorf("Release condition should be dispute_resolution, got %s", updatedEscrow.ReleaseCondition)
+	if updatedEscrow.ReleaseCondition != "dispute_resolution_multisig" {
+		t.Errorf("Release condition should be dispute_resolution_multisig, got %s", updatedEscrow.ReleaseCondition)
 	}
 }
 

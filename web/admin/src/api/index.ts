@@ -198,6 +198,112 @@ export interface ReputationInfo {
   rank?: number
 }
 
+// ========== 任务类型 ==========
+export interface TaskInfo {
+  task_id: string
+  type: string
+  description: string
+  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'failed'
+  creator_id: string
+  assignee_id?: string
+  reward: number
+  deadline?: string
+  created_at: string
+  updated_at?: string
+  result?: any
+}
+
+// ========== 投票类型 ==========
+export interface Proposal {
+  proposal_id: string
+  title: string
+  description: string
+  proposer_id: string
+  status: 'voting' | 'passed' | 'rejected' | 'finalized'
+  options: string[]
+  votes: Record<string, number>
+  created_at: string
+  deadline: string
+  result?: string
+}
+
+// ========== 超级节点类型 ==========
+export interface SupernodeInfo {
+  node_id: string
+  term: number
+  reputation: number
+  stake: number
+  status: string
+  elected_at: string
+}
+
+export interface CandidateInfo {
+  node_id: string
+  stake: number
+  votes: number
+  reputation: number
+  applied_at: string
+}
+
+// ========== 审计类型 ==========
+export interface AuditDeviation {
+  node_id: string
+  type: string
+  severity: string
+  description: string
+  detected_at: string
+  resolved: boolean
+}
+
+export interface PenaltyConfig {
+  reputation_threshold: number
+  reputation_penalty_rate: number
+  collateral_penalty_rate: number
+  cooldown_hours: number
+}
+
+// ========== 抵押物类型 ==========
+export interface CollateralInfo {
+  node_id: string
+  amount: number
+  locked: boolean
+  deposited_at: string
+  expires_at?: string
+}
+
+// ========== 争议类型 ==========
+export interface DisputeInfo {
+  dispute_id: string
+  task_id: string
+  plaintiff_id: string
+  respondent_id: string
+  amount: number
+  status: string
+  description?: string
+  created_at: string
+  resolved_at?: string
+  resolution?: string
+}
+
+export interface EvidenceInfo {
+  submitter_id: string
+  type: string
+  content: string
+  submitted_at: string
+}
+
+// ========== 托管类型 ==========
+export interface EscrowInfo {
+  escrow_id: string
+  task_id: string
+  payer_id: string
+  payee_id: string
+  amount: number
+  status: string
+  created_at: string
+  released_at?: string
+}
+
 const api = {
   // Auth
   login: (token: string): Promise<LoginResponse> => 
@@ -312,6 +418,112 @@ const api = {
   
   broadcastMessage: (content: string): Promise<{ message_id: string; reached_count: number }> =>
     client.post('/message/broadcast', { content }),
+
+  // ========== 任务 API ==========
+  createTask: (data: { type: string; description: string; reward?: number; deadline?: string }): Promise<{ task_id: string; status: string }> =>
+    client.post('/task/create', data),
+  
+  getTaskList: (filter?: string): Promise<{ tasks: TaskInfo[]; count: number }> =>
+    client.get(`/task/list${filter ? `?status=${filter}` : ''}`),
+  
+  getTaskDetail: (taskId: string): Promise<TaskInfo> =>
+    client.get(`/task/detail/${taskId}`),
+  
+  acceptTask: (taskId: string): Promise<{ status: string }> =>
+    client.post('/task/accept', { task_id: taskId }),
+  
+  submitTask: (taskId: string, result: any): Promise<{ status: string }> =>
+    client.post('/task/submit', { task_id: taskId, result }),
+  
+  cancelTask: (taskId: string): Promise<{ status: string }> =>
+    client.post('/task/cancel', { task_id: taskId }),
+
+  // ========== 投票 API ==========
+  createProposal: (data: { title: string; description: string; options: string[]; deadline: string }): Promise<{ proposal_id: string; status: string }> =>
+    client.post('/voting/create', data),
+  
+  getProposalList: (): Promise<{ proposals: Proposal[]; count: number }> =>
+    client.get('/voting/list'),
+  
+  getProposalDetail: (proposalId: string): Promise<Proposal> =>
+    client.get(`/voting/detail/${proposalId}`),
+  
+  vote: (proposalId: string, option: string): Promise<{ status: string }> =>
+    client.post('/voting/vote', { proposal_id: proposalId, option }),
+  
+  finalizeProposal: (proposalId: string): Promise<{ status: string; result: string }> =>
+    client.post('/voting/finalize', { proposal_id: proposalId }),
+
+  // ========== 超级节点 API ==========
+  getSupernodeList: (): Promise<{ supernodes: SupernodeInfo[]; count: number }> =>
+    client.get('/supernode/list'),
+  
+  getCandidateList: (): Promise<{ candidates: CandidateInfo[]; count: number }> =>
+    client.get('/supernode/candidates'),
+  
+  applyAsCandidate: (stake: number): Promise<{ status: string }> =>
+    client.post('/supernode/apply', { stake }),
+  
+  withdrawCandidate: (): Promise<{ status: string }> =>
+    client.post('/supernode/withdraw'),
+  
+  voteForCandidate: (candidateId: string): Promise<{ status: string }> =>
+    client.post('/supernode/vote', { candidate_id: candidateId }),
+  
+  startElection: (): Promise<{ status: string }> =>
+    client.post('/supernode/election/start'),
+
+  // ========== 审计 API ==========
+  getAuditDeviations: (): Promise<{ deviations: AuditDeviation[]; count: number }> =>
+    client.get('/audit/deviations'),
+  
+  getPenaltyConfig: (): Promise<{ config: PenaltyConfig }> =>
+    client.get('/audit/penalty/config'),
+  
+  updatePenaltyConfig: (config: PenaltyConfig): Promise<{ status: string }> =>
+    client.post('/audit/penalty/config', config),
+  
+  applyManualPenalty: (nodeId: string, reason: string, amount: number): Promise<{ status: string }> =>
+    client.post('/audit/penalty/apply', { node_id: nodeId, reason, amount }),
+
+  // ========== 抵押物 API ==========
+  getCollateralList: (): Promise<{ collaterals: CollateralInfo[]; count: number }> =>
+    client.get('/collateral/list'),
+  
+  depositCollateral: (amount: number): Promise<{ status: string }> =>
+    client.post('/collateral/deposit', { amount }),
+  
+  withdrawCollateral: (amount: number): Promise<{ status: string }> =>
+    client.post('/collateral/withdraw', { amount }),
+  
+  revokeCollateral: (nodeId: string): Promise<{ status: string }> =>
+    client.post('/collateral/revoke', { node_id: nodeId }),
+
+  // ========== 争议 API ==========
+  getDisputeList: (): Promise<{ disputes: DisputeInfo[]; count: number }> =>
+    client.get('/dispute/list'),
+  
+  createDispute: (data: { taskId: string; respondentId: string; description: string; amount: number }): Promise<{ dispute_id: string; status: string }> =>
+    client.post('/dispute/create', { task_id: data.taskId, respondent_id: data.respondentId, description: data.description, amount: data.amount }),
+  
+  getEvidence: (disputeId: string): Promise<{ evidence: EvidenceInfo[] }> =>
+    client.get(`/dispute/evidence/${disputeId}`),
+  
+  resolveDispute: (disputeId: string, favor: 'plaintiff' | 'respondent'): Promise<{ status: string }> =>
+    client.post('/dispute/resolve', { dispute_id: disputeId, favor }),
+
+  // ========== 托管 API ==========
+  getEscrowList: (): Promise<{ escrows: EscrowInfo[]; count: number }> =>
+    client.get('/escrow/list'),
+  
+  createEscrow: (taskId: string, payeeId: string, amount: number): Promise<{ escrow_id: string; status: string }> =>
+    client.post('/escrow/create', { task_id: taskId, payee_id: payeeId, amount }),
+  
+  releaseEscrow: (escrowId: string): Promise<{ status: string }> =>
+    client.post('/escrow/release', { escrow_id: escrowId }),
+  
+  refundEscrow: (escrowId: string): Promise<{ status: string }> =>
+    client.post('/escrow/refund', { escrow_id: escrowId }),
 }
 
 export default api

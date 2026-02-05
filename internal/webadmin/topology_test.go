@@ -111,6 +111,30 @@ func (m *mockNodeInfoProvider) GetNetworkStats() *NetworkStats {
 	}
 }
 
+func (m *mockNodeInfoProvider) AddBootstrapNode(addr string) error {
+	return nil
+}
+
+func (m *mockNodeInfoProvider) RemoveBootstrapNode(addr string) error {
+	return nil
+}
+
+func (m *mockNodeInfoProvider) ConnectToPeer(multiaddr string) error {
+	return nil
+}
+
+func (m *mockNodeInfoProvider) DisconnectPeer(peerID string) error {
+	return nil
+}
+
+func (m *mockNodeInfoProvider) GetSystemInfo() *SystemInfo {
+	return &SystemInfo{OS: "test", Arch: "amd64"}
+}
+
+func (m *mockNodeInfoProvider) GetBootstrapNodes() []string {
+	return []string{}
+}
+
 func TestTopologyManager_UpdateTopology(t *testing.T) {
 	mock := &mockNodeInfoProvider{
 		nodeID: "QmTestNode123",

@@ -176,21 +176,33 @@ func TestAutoResolve(t *testing.T) {
 	)
 
 	// Submit evidence (no delivery proof from defendant)
+	// Task44: Evidence must be verified for auto-execution
 	dm.SubmitEvidence(dispute.ID, "complainant1", "text", "I waited but nothing was delivered", "hash")
+	dm.VerifyEvidence(dispute.ID, dispute.Evidence[0].ID, "verifier1") // Mark as verified
 	dm.StartReview(dispute.ID)
 
-	// Try auto-resolve
-	resolution, err := dm.TryAutoResolve(dispute.ID)
+	// Try auto-resolve - now returns suggestion
+	suggestion, err := dm.TryAutoResolve(dispute.ID)
 	if err != nil {
 		t.Errorf("TryAutoResolve failed: %v", err)
 	}
 
-	if resolution == nil {
-		t.Fatal("Resolution should not be nil")
+	if suggestion == nil {
+		t.Fatal("Suggestion should not be nil")
 	}
 
-	if resolution.Winner != "complainant1" {
-		t.Errorf("Winner should be complainant, got %s", resolution.Winner)
+	if suggestion.Suggestion.Winner != "complainant1" {
+		t.Errorf("Winner should be complainant, got %s", suggestion.Suggestion.Winner)
+	}
+
+	// Task44: Apply the suggestion to actually resolve
+	resolution, err := dm.ApplyAutoResolution(dispute.ID, suggestion, "approver1")
+	if err != nil {
+		t.Errorf("ApplyAutoResolution failed: %v", err)
+	}
+
+	if resolution == nil {
+		t.Fatal("Resolution should not be nil")
 	}
 
 	updatedDispute, _ := dm.GetDispute(dispute.ID)
@@ -449,8 +461,12 @@ func TestDisputeStatistics(t *testing.T) {
 	// Create and resolve some disputes
 	dispute1, _ := dm.CreateDispute("task1", "comp1", "def1", DisputeNonDelivery, "Issue", 100.0)
 	dm.SubmitEvidence(dispute1.ID, "comp1", "text", "Proof", "hash")
+	dm.VerifyEvidence(dispute1.ID, dispute1.Evidence[0].ID, "verifier1") // Task44: Mark verified
 	dm.StartReview(dispute1.ID)
-	dm.TryAutoResolve(dispute1.ID) // Complainant wins
+	suggestion, _ := dm.TryAutoResolve(dispute1.ID)
+	if suggestion != nil {
+		dm.ApplyAutoResolution(dispute1.ID, suggestion, "approver1") // Complainant wins
+	}
 
 	dispute2, _ := dm.CreateDispute("task2", "comp2", "def2", DisputeOther, "Issue", 50.0)
 	dm.DismissDispute(dispute2.ID, "Frivolous")

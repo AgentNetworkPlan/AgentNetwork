@@ -59,8 +59,10 @@ type Server struct {
 	topology   *TopologyManager
 	handlers   *Handlers
 	opHandlers *OperationHandlers
+	extHandlers *ExtendedOperationHandlers
 	nodeInfo   NodeInfoProvider
 	opsProvider OperationsProvider
+	extProvider ExtendedOperationsProvider
 
 	mu      sync.RWMutex
 	running bool
@@ -182,6 +184,7 @@ func New(config *Config, nodeInfo NodeInfoProvider) *Server {
 	s.topology = NewTopologyManager(nodeInfo)
 	s.handlers = NewHandlers(s)
 	s.opHandlers = NewOperationHandlers(s, nil) // 初始化时没有操作提供者
+	s.extHandlers = nil // 初始化时没有扩展操作提供者
 
 	s.setupRoutes()
 
@@ -194,6 +197,14 @@ func (s *Server) SetOperationsProvider(provider OperationsProvider) {
 	defer s.mu.Unlock()
 	s.opsProvider = provider
 	s.opHandlers = NewOperationHandlers(s, provider)
+}
+
+// SetExtendedOperationsProvider sets the extended operations provider for full API support.
+func (s *Server) SetExtendedOperationsProvider(provider ExtendedOperationsProvider) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.extProvider = provider
+	s.extHandlers = NewExtendedOperationHandlers(s, provider)
 }
 
 // setupRoutes configures all HTTP routes.
@@ -256,8 +267,225 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("/ws/logs", s.wsAuthMiddleware(s.handlers.HandleWSLogs))
 	s.mux.HandleFunc("/ws/stats", s.wsAuthMiddleware(s.handlers.HandleWSStats))
 
+	// ========== 扩展 API (Task09 完整支持) ==========
+	// 声誉扩展
+	s.mux.HandleFunc("/api/reputation/update", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil {
+			s.extHandlers.HandleReputationUpdate(w, r)
+		} else {
+			WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured")
+		}
+	}, true))
+	s.mux.HandleFunc("/api/reputation/history", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil {
+			s.extHandlers.HandleReputationHistory(w, r)
+		} else {
+			WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured")
+		}
+	}, true))
+
+	// 任务管理
+	s.mux.HandleFunc("/api/task/create", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleTaskCreate(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/task/status", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleTaskStatus(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/task/accept", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleTaskAccept(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/task/submit", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleTaskSubmit(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/task/list", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleTaskList(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
+	// 指责系统
+	s.mux.HandleFunc("/api/accusation/create", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleAccusationCreate(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/accusation/list", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleAccusationList(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/accusation/detail/", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleAccusationDetail(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/accusation/analyze", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleAccusationAnalyze(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
+	// 激励系统
+	s.mux.HandleFunc("/api/incentive/award", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleIncentiveAward(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/incentive/propagate", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleIncentivePropagate(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/incentive/history", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleIncentiveHistory(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/incentive/tolerance", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleIncentiveTolerance(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
+	// 投票系统
+	s.mux.HandleFunc("/api/voting/proposal/create", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleProposalCreate(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/voting/proposal/list", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleProposalList(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/voting/proposal/finalize", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleProposalFinalize(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/voting/proposal/", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleProposalDetail(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/voting/vote", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleVotingVote(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
+	// 超级节点
+	s.mux.HandleFunc("/api/supernode/list", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleSupernodeList(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/supernode/candidates", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleCandidatesList(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/supernode/apply", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleSupernodeApply(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/supernode/withdraw", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleSupernodeWithdraw(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/supernode/vote", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleSupernodeVote(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/supernode/election/start", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleElectionStart(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/supernode/election/finalize", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleElectionFinalize(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/supernode/audit/submit", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleAuditSubmit(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/supernode/audit/result", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleAuditResult(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
+	// 创世节点
+	s.mux.HandleFunc("/api/genesis/info", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleGenesisInfo(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/genesis/invite/create", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleGenesisInviteCreate(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/genesis/invite/verify", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleGenesisInviteVerify(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/genesis/join", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleGenesisJoin(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
+	// 日志系统
+	s.mux.HandleFunc("/api/log/submit", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleLogSubmit(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/log/query", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleLogQuery(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/log/export", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleLogExport(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
+	// 审计集成 (Task44)
+	s.mux.HandleFunc("/api/audit/deviations", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleAuditDeviations(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/audit/penalty-config", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleAuditPenaltyConfig(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/audit/manual-penalty", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleManualPenalty(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
+	// 抵押物管理 (Task44)
+	s.mux.HandleFunc("/api/collateral/list", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleCollateralList(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/collateral/by-node", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleCollateralByNode(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/collateral/slash-by-node", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleSlashByNode(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/collateral/slash-history", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleSlashHistory(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
+	// 争议预审 (Task44)
+	s.mux.HandleFunc("/api/dispute/list", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleDisputeList(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/dispute/suggestion/", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleDisputeSuggestion(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/dispute/verify-evidence", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleVerifyEvidence(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/dispute/apply-suggestion", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleApplySuggestion(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/dispute/detail/", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleDisputeDetail(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
+	// 托管多签 (Task44)
+	s.mux.HandleFunc("/api/escrow/list", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleEscrowList(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/escrow/detail/", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleEscrowDetail(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/escrow/arbitrator-signature", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleArbitratorSignature(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/escrow/signature-count/", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleSignatureCount(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+	s.mux.HandleFunc("/api/escrow/resolve", s.wrapExtendedHandler(func(w http.ResponseWriter, r *http.Request) {
+		if s.extHandlers != nil { s.extHandlers.HandleEscrowResolve(w, r) } else { WriteError(w, http.StatusServiceUnavailable, "Extended operations not configured") }
+	}, true))
+
 	// Static files (Vue.js app)
 	s.setupStaticFiles()
+}
+
+// wrapExtendedHandler wraps extended operation handler with CORS and auth middleware.
+func (s *Server) wrapExtendedHandler(handler http.HandlerFunc, requireAuth bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// CORS headers
+		if s.config.EnableCORS {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		}
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Auth check
+		if requireAuth && !s.checkAuth(r) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		handler(w, r)
+	}
 }
 
 // wrapOperationHandler wraps operation handler with CORS and auth middleware.
@@ -321,19 +549,26 @@ func (s *Server) wrapHandler(handler http.HandlerFunc, requireAuth bool) http.Ha
 
 // checkAuth checks if the request is authenticated.
 func (s *Server) checkAuth(r *http.Request) bool {
-	// Check URL token parameter (quick access)
+	// Check URL token parameter (quick access with admin token)
 	token := r.URL.Query().Get("token")
 	if token != "" && s.auth.ValidateToken(token) {
 		return true
 	}
 
-	// Check token cookie
+	// Check session cookie (session ID)
 	cookie, err := r.Cookie(TokenCookieName)
-	if err == nil && s.auth.ValidateToken(cookie.Value) {
-		return true
+	if err == nil {
+		// First try as session ID
+		if s.auth.ValidateSession(cookie.Value) {
+			return true
+		}
+		// Fallback to direct token validation for backward compatibility
+		if s.auth.ValidateToken(cookie.Value) {
+			return true
+		}
 	}
 
-	// Check Authorization header
+	// Check Authorization header (admin token)
 	authHeader := r.Header.Get("Authorization")
 	if strings.HasPrefix(authHeader, "Bearer ") {
 		token := strings.TrimPrefix(authHeader, "Bearer ")

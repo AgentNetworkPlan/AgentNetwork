@@ -171,6 +171,17 @@ type AutoResolveRule struct {
 	Description string
 }
 
+// AutoResolveSuggestion Task44: 自动裁决建议（降级为预审，不再直接执行）
+type AutoResolveSuggestion struct {
+	DisputeID      string       `json:"dispute_id"`
+	MatchedRule    string       `json:"matched_rule"`    // 匹配的规则描述
+	Suggestion     *Resolution  `json:"suggestion"`      // 建议的裁决
+	Confidence     float64      `json:"confidence"`      // 置信度 (0-1)
+	MissingEvidence []string    `json:"missing_evidence"` // 缺失的关键证据
+	Warnings       []string     `json:"warnings"`        // 风险警告
+	CanAutoExecute bool         `json:"can_auto_execute"` // 是否可自动执行（仅当证据Verified时）
+}
+
 // NewDisputeManager 创建争议管理器
 func NewDisputeManager(config *DisputeConfig) *DisputeManager {
 	if config == nil {
@@ -269,6 +280,28 @@ func (dm *DisputeManager) SubmitEvidence(disputeID, submitterID, evidenceType, c
 	return nil
 }
 
+// VerifyEvidence Task44: 验证证据（将证据标记为已验证）
+func (dm *DisputeManager) VerifyEvidence(disputeID, evidenceID, verifierID string) error {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+
+	dispute, exists := dm.disputes[disputeID]
+	if !exists {
+		return ErrDisputeNotFound
+	}
+
+	for i := range dispute.Evidence {
+		if dispute.Evidence[i].ID == evidenceID {
+			dispute.Evidence[i].Verified = true
+			dispute.UpdatedAt = time.Now().Unix()
+			dm.save()
+			return nil
+		}
+	}
+
+	return ErrInvalidEvidence
+}
+
 // StartReview 开始审核
 func (dm *DisputeManager) StartReview(disputeID string) error {
 	dm.mu.Lock()
@@ -298,8 +331,9 @@ func (dm *DisputeManager) StartReview(disputeID string) error {
 	return nil
 }
 
-// TryAutoResolve 尝试自动解决
-func (dm *DisputeManager) TryAutoResolve(disputeID string) (*Resolution, error) {
+// TryAutoResolve Task44: 尝试自动解决（降级为预审建议）
+// 返回 AutoResolveSuggestion 而不是直接裁决，需要调用 ApplyAutoResolution 执行
+func (dm *DisputeManager) TryAutoResolve(disputeID string) (*AutoResolveSuggestion, error) {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
 
@@ -316,26 +350,93 @@ func (dm *DisputeManager) TryAutoResolve(disputeID string) (*Resolution, error) 
 		return nil, fmt.Errorf("cannot auto resolve: dispute status is %s", dispute.Status)
 	}
 
+	// Task44: 检查证据是否已验证
+	var warnings []string
+	var missingEvidence []string
+	hasVerifiedEvidence := false
+	for _, e := range dispute.Evidence {
+		if e.Verified {
+			hasVerifiedEvidence = true
+		} else {
+			warnings = append(warnings, fmt.Sprintf("evidence '%s' (type=%s) is not verified", e.ID, e.Type))
+		}
+	}
+	if !hasVerifiedEvidence {
+		missingEvidence = append(missingEvidence, "at least one verified evidence required")
+	}
+
 	// 尝试匹配规则
 	for _, rule := range dm.autoRules {
 		if rule.Type == dispute.Type && rule.Condition(dispute) {
 			resolution := rule.Resolution(dispute)
-			resolution.ResolvedBy = "system"
+			resolution.ResolvedBy = "system_suggestion" // Task44: 标记为建议而非最终裁决
 
-			dispute.Resolution = resolution
-			dispute.ResolutionType = ResolutionAutomatic
-			dispute.Status = DisputeResolved
-			dispute.ResolvedAt = time.Now().Unix()
-			dispute.UpdatedAt = time.Now().Unix()
+			// Task44: 计算置信度（基于已验证证据比例）
+			confidence := 0.5 // 基础置信度
+			verifiedCount := 0
+			for _, e := range dispute.Evidence {
+				if e.Verified {
+					verifiedCount++
+				}
+			}
+			if len(dispute.Evidence) > 0 {
+				confidence = 0.5 + 0.5*float64(verifiedCount)/float64(len(dispute.Evidence))
+			}
 
-			dm.updateStatusIndex(disputeID, DisputeInReview, DisputeResolved)
-			dm.save()
+			// Task44: 仅当所有关键证据已验证时才允许自动执行
+			canAutoExecute := hasVerifiedEvidence && len(warnings) == 0
 
-			return resolution, nil
+			return &AutoResolveSuggestion{
+				DisputeID:       disputeID,
+				MatchedRule:     rule.Description,
+				Suggestion:      resolution,
+				Confidence:      confidence,
+				MissingEvidence: missingEvidence,
+				Warnings:        warnings,
+				CanAutoExecute:  canAutoExecute,
+			}, nil
 		}
 	}
 
 	return nil, errors.New("no matching auto-resolve rule")
+}
+
+// ApplyAutoResolution Task44: 应用自动裁决建议（需要明确批准）
+func (dm *DisputeManager) ApplyAutoResolution(disputeID string, suggestion *AutoResolveSuggestion, approverID string) (*Resolution, error) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+
+	if suggestion == nil || suggestion.Suggestion == nil {
+		return nil, errors.New("invalid suggestion")
+	}
+
+	dispute, exists := dm.disputes[disputeID]
+	if !exists {
+		return nil, ErrDisputeNotFound
+	}
+
+	if dispute.Status != DisputeInReview {
+		return nil, fmt.Errorf("cannot apply resolution: dispute status is %s", dispute.Status)
+	}
+
+	// Task44: 仅当满足条件时才允许执行
+	if !suggestion.CanAutoExecute {
+		return nil, errors.New("suggestion cannot be auto-executed: missing verified evidence")
+	}
+
+	resolution := suggestion.Suggestion
+	resolution.ResolvedBy = fmt.Sprintf("system_approved_by_%s", approverID)
+
+	dispute.Resolution = resolution
+	dispute.ResolutionType = ResolutionAutomatic
+	dispute.Status = DisputeResolved
+	dispute.ResolvedAt = time.Now().Unix()
+	dispute.UpdatedAt = time.Now().Unix()
+
+	dm.updateStatusIndex(disputeID, DisputeInReview, DisputeResolved)
+	dm.save()
+
+	return resolution, nil
 }
 
 // StartArbitration 开始仲裁

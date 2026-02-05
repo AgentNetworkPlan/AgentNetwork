@@ -1,119 +1,119 @@
 {
-  "timestamp": "2026-02-03T20:27:08.387678",
-  "duration": 19.375769,
+  "timestamp": "2026-02-05T22:11:51.653678",
+  "duration": 27.975915,
   "total": 16,
-  "passed": 16,
-  "failed": 0,
+  "passed": 14,
+  "failed": 2,
   "results": [
     {
       "name": "编译项目",
       "passed": true,
-      "duration": 2.997012138366699,
+      "duration": 3.4104769229888916,
       "message": "",
       "details": {}
     },
     {
       "name": "启动创世节点",
       "passed": true,
-      "duration": 3.1614081859588623,
+      "duration": 3.168943405151367,
       "message": "",
       "details": {}
     },
     {
       "name": "创世节点信息",
-      "passed": true,
-      "duration": 0.0013172626495361328,
-      "message": "",
+      "passed": false,
+      "duration": 0.015586376190185547,
+      "message": "测试失败",
       "details": {}
     },
     {
       "name": "节点加入网络",
       "passed": true,
-      "duration": 8.111197710037231,
+      "duration": 16.2065007686615,
       "message": "",
       "details": {}
     },
     {
       "name": "节点发现",
       "passed": true,
-      "duration": 5.005273818969727,
+      "duration": 5.0655059814453125,
       "message": "",
       "details": {}
     },
     {
       "name": "邻居管理",
       "passed": true,
-      "duration": 0.02092766761779785,
+      "duration": 0.01676774024963379,
       "message": "",
       "details": {}
     },
     {
       "name": "消息发送",
-      "passed": true,
-      "duration": 0.0009653568267822266,
-      "message": "",
+      "passed": false,
+      "duration": 0.01343536376953125,
+      "message": "测试失败",
       "details": {}
     },
     {
       "name": "邮箱功能",
       "passed": true,
-      "duration": 0.012355804443359375,
+      "duration": 0.016969919204711914,
       "message": "",
       "details": {}
     },
     {
       "name": "公告板",
       "passed": true,
-      "duration": 0.001894235610961914,
+      "duration": 0.014284372329711914,
       "message": "",
       "details": {}
     },
     {
       "name": "声誉系统",
       "passed": true,
-      "duration": 0.002268552780151367,
+      "duration": 0.0022857189178466797,
       "message": "",
       "details": {}
     },
     {
       "name": "指责系统",
       "passed": true,
-      "duration": 0.0008852481842041016,
+      "duration": 0.0006339550018310547,
       "message": "",
       "details": {}
     },
     {
       "name": "投票系统",
       "passed": true,
-      "duration": 0.0008618831634521484,
+      "duration": 0.012569189071655273,
       "message": "",
       "details": {}
     },
     {
       "name": "超级节点",
       "passed": true,
-      "duration": 0.02198338508605957,
+      "duration": 0.015974044799804688,
       "message": "",
       "details": {}
     },
     {
       "name": "激励系统",
       "passed": true,
-      "duration": 0.015897274017333984,
+      "duration": 0.0013725757598876953,
       "message": "",
       "details": {}
     },
     {
       "name": "日志系统",
       "passed": true,
-      "duration": 1.9073486328125e-06,
+      "duration": 4.76837158203125e-07,
       "message": "",
       "details": {}
     },
     {
       "name": "错误处理",
       "passed": true,
-      "duration": 0.014313697814941406,
+      "duration": 0.01372528076171875,
       "message": "",
       "details": {}
     }

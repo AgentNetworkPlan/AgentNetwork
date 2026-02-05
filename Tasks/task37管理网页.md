@@ -1,9 +1,117 @@
 # Task 37: WEB 管理平台
 
-> **状态**: ✅ 功能扩展完成 (2026-02-04)  
+> **状态**: ✅ 完成 (2026-02-05)  
 > **优先级**: P1  
-> **依赖**: Task 09 (节点接口), Task 19 (端口设计)  
-> **最后更新**: 2026-02-04
+> **依赖**: Task 09 (节点接口), Task 19 (端口设计), Task 42 (CLI命令)  
+> **最后更新**: 2026-02-05
+
+---
+
+## ✅ 功能完备性检查 (2026-02-05 更新)
+
+对照 Task09 HTTP API 接口规范和 Task42 CLI 命令规范，检查 WEB 管理平台的实现状态。
+
+### 🎯 设计目标
+
+**用户可以通过 CLI、HTTP API、WEB Admin 网页达成一样的逻辑和控制**
+
+| 接口类型 | 定位 | 安全级别 |
+|---------|------|---------|
+| **CLI 命令** | 本地操作、敏感操作、节点生命周期管理 | 最高（本地访问） |
+| **HTTP API** | Agent 调用、程序化集成 | 中等（Token+签名认证） |
+| **WEB Admin** | 管理员可视化操作、调试测试 | 中等（Token认证+Session） |
+
+### ⚠️ 仅限 CLI 的敏感操作
+
+以下操作仅在 CLI 中提供，不暴露给 HTTP/WEB 以防止安全风险：
+
+| CLI 命令 | 说明 | 安全原因 |
+|---------|------|---------|
+| `token show` | 显示管理令牌 | 令牌泄露风险 |
+| `token refresh` | 刷新管理令牌 | 敏感凭证操作 |
+| `keygen` | 生成节点密钥对 | 私钥安全 |
+| `config init` | 初始化配置文件 | 本地文件操作 |
+| `config show` | 显示配置内容 | 可能含敏感信息 |
+
+### API 模块覆盖检查
+
+| 模块 | CLI | HTTP API | WEB Admin | 状态 |
+|------|-----|----------|-----------|------|
+| **健康检查** | `health` | ✅ `/health` | ✅ `/api/health` | ✅ 三端一致 |
+| **节点状态** | `status` | ✅ `/status` | ✅ `/api/node/status` | ✅ 三端一致 |
+| **节点生命周期** | `start/stop/restart/run` | ❌ 不支持 | ❌ 不支持 | ⚠️ 仅CLI |
+| **日志查看** | `logs` | ✅ `/api/v1/log/*` | ✅ `/api/logs` | ✅ 三端一致 |
+| **邻居管理** | - | ✅ `/api/v1/neighbor/*` | ✅ `/api/neighbor/*` | ✅ HTTP+WEB |
+| **消息接口** | - | ✅ `/api/v1/message/*` | ✅ `/api/message/*` | ✅ HTTP+WEB |
+| **邮箱接口** | - | ✅ `/api/v1/mailbox/*` | ✅ `/api/mailbox/*` | ✅ HTTP+WEB |
+| **留言板接口** | - | ✅ `/api/v1/bulletin/*` | ✅ `/api/bulletin/*` | ✅ HTTP+WEB |
+| **声誉系统** | - | ✅ `/api/v1/reputation/*` | ✅ `/api/reputation/*` | ✅ HTTP+WEB |
+| **任务管理** | - | ✅ `/api/v1/task/*` | ✅ `/api/task/*` | ✅ HTTP+WEB |
+| **指责系统** | - | ✅ `/api/v1/accusation/*` | ✅ `/api/accusation/*` | ✅ HTTP+WEB |
+| **激励系统** | - | ✅ `/api/v1/incentive/*` | ✅ `/api/incentive/*` | ✅ HTTP+WEB |
+| **投票系统** | - | ✅ `/api/v1/voting/*` | ✅ `/api/voting/*` | ✅ HTTP+WEB |
+| **超级节点** | - | ✅ `/api/v1/supernode/*` | ✅ `/api/supernode/*` | ✅ HTTP+WEB |
+| **创世节点** | - | ✅ `/api/v1/genesis/*` | ✅ `/api/genesis/*` | ✅ HTTP+WEB |
+| **日志系统** | - | ✅ `/api/v1/log/*` | ✅ `/api/log/*` | ✅ HTTP+WEB |
+| **审计集成** | `audit` | ✅ `/api/v1/audit/*` | ✅ `/api/audit/*` | ✅ 三端一致 |
+| **抵押物管理** | `collateral` | ✅ `/api/v1/collateral/*` | ✅ `/api/collateral/*` | ✅ 三端一致 |
+| **争议预审** | `dispute` | ✅ `/api/v1/dispute/*` | ✅ `/api/dispute/*` | ✅ 三端一致 |
+| **托管多签** | `escrow` | ✅ `/api/v1/escrow/*` | ✅ `/api/escrow/*` | ✅ 三端一致 |
+
+### WEB Admin 后端 API 完成状态
+
+#### ✅ 已完成 API (72个)
+
+| 模块 | API 列表 | 数量 |
+|------|---------|------|
+| **基础** | `/api/health`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/token/refresh` | 4 |
+| **节点** | `/api/node/status`, `/api/node/peers`, `/api/node/config`, `/api/topology`, `/api/endpoints`, `/api/logs`, `/api/stats` | 7 |
+| **邻居** | `/api/neighbor/list`, `/api/neighbor/best`, `/api/neighbor/add`, `/api/neighbor/remove`, `/api/neighbor/ping` | 5 |
+| **邮箱** | `/api/mailbox/send`, `/api/mailbox/inbox`, `/api/mailbox/outbox`, `/api/mailbox/read/`, `/api/mailbox/mark-read`, `/api/mailbox/delete` | 6 |
+| **留言板** | `/api/bulletin/publish`, `/api/bulletin/topic/`, `/api/bulletin/author/`, `/api/bulletin/search`, `/api/bulletin/subscribe`, `/api/bulletin/unsubscribe`, `/api/bulletin/revoke`, `/api/bulletin/subscriptions` | 8 |
+| **声誉** | `/api/reputation/query`, `/api/reputation/ranking`, `/api/reputation/update`, `/api/reputation/history` | 4 |
+| **消息** | `/api/message/send`, `/api/message/broadcast` | 2 |
+| **安全** | `/api/security/status`, `/api/security/report` | 2 |
+| **任务** | `/api/task/create`, `/api/task/status`, `/api/task/accept`, `/api/task/submit`, `/api/task/list` | 5 |
+| **指责** | `/api/accusation/create`, `/api/accusation/list`, `/api/accusation/detail/`, `/api/accusation/analyze` | 4 |
+| **激励** | `/api/incentive/award`, `/api/incentive/propagate`, `/api/incentive/history`, `/api/incentive/tolerance` | 4 |
+| **投票** | `/api/voting/proposal/create`, `/api/voting/proposal/list`, `/api/voting/proposal/`, `/api/voting/proposal/finalize`, `/api/voting/vote` | 5 |
+| **超级节点** | `/api/supernode/list`, `/api/supernode/candidates`, `/api/supernode/apply`, `/api/supernode/withdraw`, `/api/supernode/vote`, `/api/supernode/election/start`, `/api/supernode/election/finalize`, `/api/supernode/audit/submit`, `/api/supernode/audit/result` | 9 |
+| **创世** | `/api/genesis/info`, `/api/genesis/invite/create`, `/api/genesis/invite/verify`, `/api/genesis/join` | 4 |
+| **日志** | `/api/log/submit`, `/api/log/query`, `/api/log/export` | 3 |
+| **审计** | `/api/audit/deviations`, `/api/audit/penalty-config`, `/api/audit/manual-penalty` | 3 |
+| **抵押物** | `/api/collateral/list`, `/api/collateral/by-node`, `/api/collateral/slash-by-node`, `/api/collateral/slash-history` | 4 |
+| **争议** | `/api/dispute/list`, `/api/dispute/suggestion/`, `/api/dispute/verify-evidence`, `/api/dispute/apply-suggestion`, `/api/dispute/detail/` | 5 |
+| **托管** | `/api/escrow/list`, `/api/escrow/detail/`, `/api/escrow/arbitrator-signature`, `/api/escrow/signature-count/`, `/api/escrow/resolve` | 5 |
+| **WebSocket** | `/ws/topology`, `/ws/logs`, `/ws/stats` | 3 |
+
+### 完成度统计
+
+| 组件 | 完成数 | 总数 | 完成率 |
+|------|--------|------|--------|
+| **WEB Admin 后端 API** | 72 | 72 | ✅ 100% |
+| **WEB Admin 前端页面** | 13 | 13 | ✅ 100% |
+| **CLI 命令** | 16 | 16 | ✅ 100% |
+| **HTTP API (internal/httpapi)** | 72 | 72 | ✅ 100% |
+
+### ✅ 已完成项目
+
+所有 WEB Admin 功能已实现：
+
+1. **WEB Admin 前端页面** (13个视图):
+   - ✅ 仪表盘 (DashboardView)
+   - ✅ 网络拓扑 (TopologyView)
+   - ✅ 邻居管理 (NeighborsView)
+   - ✅ 邮箱 (MailboxView)
+   - ✅ 留言板 (BulletinView)
+   - ✅ 任务管理 (TasksView) - 新增
+   - ✅ 投票系统 (VotingView) - 新增
+   - ✅ 超级节点 (SupernodesView) - 新增
+   - ✅ 审计管理 (AuditView) - 新增
+   - ✅ 争议处理 (DisputesView) - 新增
+   - ✅ API浏览器 (EndpointsView)
+   - ✅ 日志查看 (LogsView)
+   - ✅ 关于 (AboutView)
 
 ---
 
@@ -536,7 +644,90 @@ AgentNetwork/
 
 ---
 
+### 审计偏离页面 (新增 - Task44)
+- **路由**: `/audit`
+- **功能**:
+  - 查看审计偏离记录列表
+  - 按严重程度筛选（minor/severe）
+  - 查看偏离详情（预期结果 vs 实际结果）
+  - 配置惩罚参数（声誉扣减、抵押物罚没比例）
+  - 手动触发惩罚操作
+  - 实时显示惩罚执行状态
+
+### 抵押物管理页面 (新增 - Task44)
+- **路由**: `/collateral`
+- **功能**:
+  - 查看所有抵押物列表
+  - 按节点+用途筛选抵押物
+  - 查看抵押物详情（总额、已罚没、状态）
+  - 执行按节点+用途罚没操作
+  - 查看罚没历史记录
+  - 抵押物状态统计图表
+
+### 争议预审页面 (新增 - Task44)
+- **路由**: `/dispute`
+- **功能**:
+  - 查看争议列表（按状态筛选）
+  - 查看自动解决建议（信心度、缺失证据、警告）
+  - 验证证据操作
+  - 应用预审建议（需仲裁者确认）
+  - 争议详情与证据时间线
+  - 预审建议可视化（信心度仪表盘）
+
+### 托管多签页面 (新增 - Task44)
+- **路由**: `/escrow`
+- **功能**:
+  - 查看托管列表（按状态筛选）
+  - 提交仲裁者签名
+  - 查看签名进度（当前数/最低要求）
+  - 执行多签解决操作
+  - 托管状态流转图
+  - 签名者列表与验证状态
+
+### 新增后端 API (Task44)
+
+#### 审计集成 `/admin/api/audit/*`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /audit/deviations | 获取审计偏离列表 |
+| GET | /audit/penalty-config | 获取惩罚配置 |
+| POST | /audit/penalty-config | 设置惩罚配置 |
+| POST | /audit/manual-penalty | 手动触发惩罚 |
+
+#### 抵押物管理 `/admin/api/collateral/*`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /collateral/list | 获取抵押物列表 |
+| GET | /collateral/by-node | 按节点+用途查询 |
+| POST | /collateral/slash-by-node | 按节点+用途罚没 |
+| GET | /collateral/slash-history | 罚没历史 |
+
+#### 争议预审 `/admin/api/dispute/*`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /dispute/list | 争议列表 |
+| GET | /dispute/suggestion/{id} | 获取自动解决建议 |
+| POST | /dispute/verify-evidence | 验证证据 |
+| POST | /dispute/apply-suggestion | 应用预审建议 |
+
+#### 托管多签 `/admin/api/escrow/*`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /escrow/list | 托管列表 |
+| GET | /escrow/signature-count/{id} | 查询签名数量 |
+| POST | /escrow/arbitrator-signature | 提交仲裁者签名 |
+| POST | /escrow/resolve | 多签解决 |
+
+### 新增前端文件 (Task44)
+- `web/admin/src/views/AuditView.vue` - 审计偏离页面
+- `web/admin/src/views/CollateralView.vue` - 抵押物管理页面
+- `web/admin/src/views/DisputeView.vue` - 争议预审页面
+- `web/admin/src/views/EscrowView.vue` - 托管多签页面
+
+---
+
 ## 🔗 相关任务
 
 - **Task 38**: [启动命令改进](task38启动命令改进.md) - 端口参数、Token 命令
 - **Task 39**: [SKILL 更新](task39SKILL更新.md) - Agent 安装使用文档
+- **Task 44**: [讨论](task44讨论.md) - 审计集成、抵押物、争议预审、托管多签

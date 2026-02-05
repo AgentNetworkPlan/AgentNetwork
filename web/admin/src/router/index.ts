@@ -56,6 +56,36 @@ const router = createRouter({
       meta: { title: '日志查看' }
     },
     {
+      path: '/tasks',
+      name: 'tasks',
+      component: () => import('@/views/TasksView.vue'),
+      meta: { title: '任务管理' }
+    },
+    {
+      path: '/voting',
+      name: 'voting',
+      component: () => import('@/views/VotingView.vue'),
+      meta: { title: '投票系统' }
+    },
+    {
+      path: '/supernodes',
+      name: 'supernodes',
+      component: () => import('@/views/SupernodesView.vue'),
+      meta: { title: '超级节点' }
+    },
+    {
+      path: '/audit',
+      name: 'audit',
+      component: () => import('@/views/AuditView.vue'),
+      meta: { title: '审计管理' }
+    },
+    {
+      path: '/disputes',
+      name: 'disputes',
+      component: () => import('@/views/DisputesView.vue'),
+      meta: { title: '争议处理' }
+    },
+    {
       path: '/about',
       name: 'about',
       component: () => import('@/views/AboutView.vue'),

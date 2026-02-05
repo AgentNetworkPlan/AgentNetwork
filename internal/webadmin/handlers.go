@@ -41,8 +41,9 @@ func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate token
-	if !h.server.auth.ValidateToken(req.Token) {
+	// Validate token and create session
+	session, err := h.server.auth.CreateSession(req.Token, r.RemoteAddr, r.UserAgent())
+	if err != nil {
 		WriteJSON(w, http.StatusUnauthorized, LoginResponse{
 			Success: false,
 			Error:   "Invalid token",
@@ -50,26 +51,31 @@ func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set token cookie (expires in 24 hours)
-	expiresAt := time.Now().Add(24 * time.Hour)
+	// Set session cookie (using session ID, not the token)
 	http.SetCookie(w, &http.Cookie{
 		Name:     TokenCookieName,
-		Value:    req.Token,
+		Value:    session.ID,
 		Path:     "/",
-		Expires:  expiresAt,
+		Expires:  session.ExpiresAt,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
 
 	WriteJSON(w, http.StatusOK, LoginResponse{
 		Success:   true,
-		SessionID: "token-authenticated", // For compatibility
-		ExpiresAt: expiresAt.Format(time.RFC3339),
+		SessionID: session.ID,
+		ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
 	})
 }
 
 // HandleLogout handles logout requests.
 func (h *Handlers) HandleLogout(w http.ResponseWriter, r *http.Request) {
+	// Get and invalidate session
+	cookie, err := r.Cookie(TokenCookieName)
+	if err == nil && cookie.Value != "" {
+		h.server.auth.DeleteSession(cookie.Value)
+	}
+
 	// Clear the token cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     TokenCookieName,

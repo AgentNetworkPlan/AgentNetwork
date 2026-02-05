@@ -68,6 +68,35 @@ func (m *mockNodeInfo) GetNetworkStats() *NetworkStats {
 	}
 }
 
+func (m *mockNodeInfo) AddBootstrapNode(addr string) error {
+	return nil
+}
+
+func (m *mockNodeInfo) RemoveBootstrapNode(addr string) error {
+	return nil
+}
+
+func (m *mockNodeInfo) ConnectToPeer(multiaddr string) error {
+	return nil
+}
+
+func (m *mockNodeInfo) DisconnectPeer(peerID string) error {
+	return nil
+}
+
+func (m *mockNodeInfo) GetSystemInfo() *SystemInfo {
+	return &SystemInfo{
+		OS:       "test",
+		Arch:     "amd64",
+		NumCPU:   4,
+		Hostname: "test-host",
+	}
+}
+
+func (m *mockNodeInfo) GetBootstrapNodes() []string {
+	return []string{"/dnsaddr/bootstrap.example.com/p2p/12D3KooW..."}
+}
+
 func newTestServer() *Server {
 	config := &Config{
 		ListenAddr:      "127.0.0.1:0",
@@ -454,7 +483,7 @@ func TestLogout(t *testing.T) {
 	cookies := loginW.Result().Cookies()
 	var sessionCookie *http.Cookie
 	for _, c := range cookies {
-		if c.Name == SessionCookieName {
+		if c.Name == TokenCookieName {
 			sessionCookie = c
 			break
 		}

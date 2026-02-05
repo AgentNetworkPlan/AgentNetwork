@@ -89,6 +89,17 @@ type MultiAudit struct {
 	Results     map[string]*AuditRecord  `json:"results"`       // auditorID -> result
 	FinalResult AuditResult              `json:"final_result"`
 	Finalized   bool                     `json:"finalized"`
+	Deviations  []AuditDeviation         `json:"deviations"`    // 偏离共识的审计者记录
+}
+
+// AuditDeviation 审计偏离记录（用于惩罚闭环）
+type AuditDeviation struct {
+	AuditID       string      `json:"audit_id"`
+	AuditorID     string      `json:"auditor_id"`
+	ExpectedResult AuditResult `json:"expected_result"` // 应该的结果（FinalResult）
+	ActualResult   AuditResult `json:"actual_result"`   // 实际提交的结果
+	Severity       string      `json:"severity"`        // minor/severe
+	DetectedAt     time.Time   `json:"detected_at"`
 }
 
 // Election 选举周期
@@ -163,6 +174,7 @@ type SuperNodeManager struct {
 	onSuperNodeElected   func(*SuperNode)
 	onSuperNodeRemoved   func(nodeID string)
 	onAuditCompleted     func(*MultiAudit)
+	onAuditorDeviation   func(*AuditDeviation) // Task44: 审计偏离惩罚回调
 	onElectionStarted    func(*Election)
 	onElectionFinalized  func(*Election)
 
@@ -235,6 +247,13 @@ func (s *SuperNodeManager) SetOnAuditCompleted(fn func(*MultiAudit)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onAuditCompleted = fn
+}
+
+// SetOnAuditorDeviation 设置审计偏离回调（Task44: 用于触发Violation事件）
+func (s *SuperNodeManager) SetOnAuditorDeviation(fn func(*AuditDeviation)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onAuditorDeviation = fn
 }
 
 // SetOnElectionStarted 设置选举开始回调
@@ -725,7 +744,8 @@ func (s *SuperNodeManager) tryFinalizeAudit(audit *MultiAudit) {
 
 	audit.Finalized = true
 
-	// 更新审计者通过率
+	// 更新审计者通过率 & 检测偏离（Task44: 审计偏离惩罚闭环）
+	audit.Deviations = make([]AuditDeviation, 0)
 	for auditorID, record := range audit.Results {
 		if sn, exists := s.superNodes[auditorID]; exists {
 			// 如果审计者的结果与最终结果一致，增加其通过率
@@ -733,6 +753,26 @@ func (s *SuperNodeManager) tryFinalizeAudit(audit *MultiAudit) {
 				sn.PassRate = (sn.PassRate*float64(sn.AuditCount-1) + 1) / float64(sn.AuditCount)
 			} else {
 				sn.PassRate = sn.PassRate * float64(sn.AuditCount-1) / float64(sn.AuditCount)
+				// Task44: 记录偏离并触发回调
+				severity := "minor"
+				// 严重偏离: 结果完全相反 (pass vs fail)
+				if (record.Result == ResultPass && audit.FinalResult == ResultFail) ||
+					(record.Result == ResultFail && audit.FinalResult == ResultPass) {
+					severity = "severe"
+				}
+				deviation := AuditDeviation{
+					AuditID:        audit.ID,
+					AuditorID:      auditorID,
+					ExpectedResult: audit.FinalResult,
+					ActualResult:   record.Result,
+					Severity:       severity,
+					DetectedAt:     time.Now(),
+				}
+				audit.Deviations = append(audit.Deviations, deviation)
+				// 触发偏离回调（可用于Emit EventViolation / SlashCollateral）
+				if s.onAuditorDeviation != nil {
+					go s.onAuditorDeviation(&deviation)
+				}
 			}
 		}
 	}

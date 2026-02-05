@@ -527,6 +527,31 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/log/query", s.handleLogQuery)
 	mux.HandleFunc("/api/v1/log/export", s.handleLogExport)
 	
+	// 审计集成
+	mux.HandleFunc("/api/v1/audit/deviations", s.handleAuditDeviations)
+	mux.HandleFunc("/api/v1/audit/penalty-config", s.handleAuditPenaltyConfig)
+	mux.HandleFunc("/api/v1/audit/manual-penalty", s.handleAuditManualPenalty)
+	
+	// 抵押物管理
+	mux.HandleFunc("/api/v1/collateral/list", s.handleCollateralList)
+	mux.HandleFunc("/api/v1/collateral/by-node", s.handleCollateralByNode)
+	mux.HandleFunc("/api/v1/collateral/slash-by-node", s.handleCollateralSlashByNode)
+	mux.HandleFunc("/api/v1/collateral/slash-history", s.handleCollateralSlashHistory)
+	
+	// 争议预审
+	mux.HandleFunc("/api/v1/dispute/list", s.handleDisputeList)
+	mux.HandleFunc("/api/v1/dispute/suggestion/", s.handleDisputeSuggestion)
+	mux.HandleFunc("/api/v1/dispute/verify-evidence", s.handleDisputeVerifyEvidence)
+	mux.HandleFunc("/api/v1/dispute/apply-suggestion", s.handleDisputeApplySuggestion)
+	mux.HandleFunc("/api/v1/dispute/detail/", s.handleDisputeDetail)
+	
+	// 托管多签
+	mux.HandleFunc("/api/v1/escrow/list", s.handleEscrowList)
+	mux.HandleFunc("/api/v1/escrow/detail/", s.handleEscrowDetail)
+	mux.HandleFunc("/api/v1/escrow/arbitrator-signature", s.handleEscrowArbitratorSignature)
+	mux.HandleFunc("/api/v1/escrow/signature-count/", s.handleEscrowSignatureCount)
+	mux.HandleFunc("/api/v1/escrow/resolve", s.handleEscrowResolve)
+	
 	// 注册自定义处理函数
 	for path, handler := range s.handlers {
 		mux.HandleFunc(path, handler)
@@ -2306,5 +2331,460 @@ func (s *Server) handleLogExport(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"file":   "logs_export.json",
 		"status": "exported",
+	})
+}
+
+// ============== 审计集成 ==============
+
+// AuditDeviation 审计偏离记录
+type AuditDeviation struct {
+	AuditID    string `json:"audit_id"`
+	AuditorID  string `json:"auditor_id"`
+	TargetID   string `json:"target_id"`
+	Expected   bool   `json:"expected"`
+	Actual     bool   `json:"actual"`
+	Severity   string `json:"severity"`
+	Timestamp  int64  `json:"timestamp"`
+}
+
+// PenaltyConfig 惩罚配置
+type PenaltyConfig struct {
+	Severity    string  `json:"severity"`
+	RepPenalty  float64 `json:"rep_penalty"`
+	SlashRatio  float64 `json:"slash_ratio"`
+}
+
+func (s *Server) handleAuditDeviations(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	limit := getIntQueryParam(r, "limit", 20)
+	
+	// 返回模拟数据，实际应从审计模块获取
+	deviations := []AuditDeviation{}
+	_ = limit
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"deviations": deviations,
+		"total":      0,
+	})
+}
+
+func (s *Server) handleAuditPenaltyConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		// 获取惩罚配置
+		config := map[string]PenaltyConfig{
+			"minor":  {Severity: "minor", RepPenalty: 5, SlashRatio: 0.1},
+			"severe": {Severity: "severe", RepPenalty: 20, SlashRatio: 0.3},
+		}
+		s.writeJSON(w, http.StatusOK, config)
+		return
+	}
+	
+	if r.Method == http.MethodPost {
+		var req PenaltyConfig
+		if err := parseBody(r, &req); err != nil {
+			s.writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":  "updated",
+			"config":  req,
+		})
+		return
+	}
+	
+	s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+}
+
+func (s *Server) handleAuditManualPenalty(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	var req struct {
+		NodeID   string `json:"node_id"`
+		Severity string `json:"severity"`
+		Reason   string `json:"reason"`
+	}
+	if err := parseBody(r, &req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	
+	if req.NodeID == "" {
+		s.writeError(w, http.StatusBadRequest, "node_id required")
+		return
+	}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"penalty_applied": true,
+		"node_id":         req.NodeID,
+		"rep_delta":       -5.0,
+		"slashed":         100,
+	})
+}
+
+// ============== 抵押物管理 ==============
+
+// Collateral 抵押物
+type Collateral struct {
+	ID        string  `json:"id"`
+	NodeID    string  `json:"node_id"`
+	Purpose   string  `json:"purpose"`
+	Amount    float64 `json:"amount"`
+	Slashed   float64 `json:"slashed"`
+	Status    string  `json:"status"`
+	CreatedAt int64   `json:"created_at"`
+}
+
+func (s *Server) handleCollateralList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	status := getQueryParam(r, "status", "")
+	_ = status
+	
+	collaterals := []Collateral{}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"collaterals": collaterals,
+		"total":       0,
+	})
+}
+
+func (s *Server) handleCollateralByNode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	nodeID := getQueryParam(r, "node_id", "")
+	purpose := getQueryParam(r, "purpose", "")
+	
+	if nodeID == "" {
+		s.writeError(w, http.StatusBadRequest, "node_id required")
+		return
+	}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"collateral_id": "coll-" + nodeID[:8],
+		"node_id":       nodeID,
+		"purpose":       purpose,
+		"amount":        1000.0,
+		"slashed":       0.0,
+		"status":        "active",
+	})
+}
+
+func (s *Server) handleCollateralSlashByNode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	var req struct {
+		NodeID   string  `json:"node_id"`
+		Purpose  string  `json:"purpose"`
+		Ratio    float64 `json:"ratio"`
+		Reason   string  `json:"reason"`
+		Evidence string  `json:"evidence"`
+	}
+	if err := parseBody(r, &req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	
+	if req.NodeID == "" || req.Purpose == "" {
+		s.writeError(w, http.StatusBadRequest, "node_id and purpose required")
+		return
+	}
+	
+	slashedAmount := 1000.0 * req.Ratio
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"slashed_amount": slashedAmount,
+		"remaining":      1000.0 - slashedAmount,
+		"status":         "slashed",
+	})
+}
+
+func (s *Server) handleCollateralSlashHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	nodeID := getQueryParam(r, "node_id", "")
+	limit := getIntQueryParam(r, "limit", 20)
+	_, _ = nodeID, limit
+	
+	history := []map[string]interface{}{}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"history": history,
+		"total":   0,
+	})
+}
+
+// ============== 争议预审 ==============
+
+// Dispute 争议记录
+type Dispute struct {
+	ID         string   `json:"id"`
+	Plaintiff  string   `json:"plaintiff"`
+	Defendant  string   `json:"defendant"`
+	Status     string   `json:"status"`
+	Evidence   []string `json:"evidence"`
+	CreatedAt  int64    `json:"created_at"`
+}
+
+// DisputeSuggestion 争议解决建议
+type DisputeSuggestion struct {
+	Resolution      string   `json:"suggested_resolution"`
+	Confidence      float64  `json:"confidence"`
+	CanAutoExecute  bool     `json:"can_auto_execute"`
+	MissingEvidence []string `json:"missing_evidence"`
+	Warnings        []string `json:"warnings"`
+}
+
+func (s *Server) handleDisputeList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	status := getQueryParam(r, "status", "")
+	_ = status
+	
+	disputes := []Dispute{}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"disputes": disputes,
+		"total":    0,
+	})
+}
+
+func (s *Server) handleDisputeSuggestion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	// 从URL提取争议ID
+	disputeID := strings.TrimPrefix(r.URL.Path, "/api/v1/dispute/suggestion/")
+	if disputeID == "" {
+		s.writeError(w, http.StatusBadRequest, "dispute_id required")
+		return
+	}
+	
+	suggestion := DisputeSuggestion{
+		Resolution:      "favor_plaintiff",
+		Confidence:      0.85,
+		CanAutoExecute:  false,
+		MissingEvidence: []string{"delivery_proof"},
+		Warnings:        []string{"证据未全部验证"},
+	}
+	
+	s.writeJSON(w, http.StatusOK, suggestion)
+}
+
+func (s *Server) handleDisputeVerifyEvidence(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	var req struct {
+		DisputeID  string `json:"dispute_id"`
+		EvidenceID string `json:"evidence_id"`
+		VerifierID string `json:"verifier_id"`
+	}
+	if err := parseBody(r, &req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"verified":    true,
+		"dispute_id":  req.DisputeID,
+		"evidence_id": req.EvidenceID,
+	})
+}
+
+func (s *Server) handleDisputeApplySuggestion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	var req struct {
+		DisputeID  string `json:"dispute_id"`
+		ApproverID string `json:"approver_id"`
+	}
+	if err := parseBody(r, &req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"applied":    true,
+		"resolution": "favor_plaintiff",
+		"dispute_id": req.DisputeID,
+	})
+}
+
+func (s *Server) handleDisputeDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	disputeID := strings.TrimPrefix(r.URL.Path, "/api/v1/dispute/detail/")
+	if disputeID == "" {
+		s.writeError(w, http.StatusBadRequest, "dispute_id required")
+		return
+	}
+	
+	dispute := Dispute{
+		ID:        disputeID,
+		Plaintiff: "node-A",
+		Defendant: "node-B",
+		Status:    "pending",
+		Evidence:  []string{},
+		CreatedAt: time.Now().Unix(),
+	}
+	
+	s.writeJSON(w, http.StatusOK, dispute)
+}
+
+// ============== 托管多签 ==============
+
+// Escrow 托管记录
+type Escrow struct {
+	ID          string  `json:"id"`
+	Amount      float64 `json:"amount"`
+	Depositor   string  `json:"depositor"`
+	Beneficiary string  `json:"beneficiary"`
+	Status      string  `json:"status"`
+	CreatedAt   int64   `json:"created_at"`
+}
+
+func (s *Server) handleEscrowList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	status := getQueryParam(r, "status", "")
+	_ = status
+	
+	escrows := []Escrow{}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"escrows": escrows,
+		"total":   0,
+	})
+}
+
+func (s *Server) handleEscrowDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	escrowID := strings.TrimPrefix(r.URL.Path, "/api/v1/escrow/detail/")
+	if escrowID == "" {
+		s.writeError(w, http.StatusBadRequest, "escrow_id required")
+		return
+	}
+	
+	escrow := Escrow{
+		ID:          escrowID,
+		Amount:      1000,
+		Depositor:   "node-A",
+		Beneficiary: "node-B",
+		Status:      "active",
+		CreatedAt:   time.Now().Unix(),
+	}
+	
+	s.writeJSON(w, http.StatusOK, escrow)
+}
+
+func (s *Server) handleEscrowArbitratorSignature(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	var req struct {
+		EscrowID    string `json:"escrow_id"`
+		ArbitratorID string `json:"arbitrator_id"`
+		Signature   string `json:"signature"`
+	}
+	if err := parseBody(r, &req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"submitted":     true,
+		"current_count": 1,
+		"required":      2,
+	})
+}
+
+func (s *Server) handleEscrowSignatureCount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	escrowID := strings.TrimPrefix(r.URL.Path, "/api/v1/escrow/signature-count/")
+	if escrowID == "" {
+		s.writeError(w, http.StatusBadRequest, "escrow_id required")
+		return
+	}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"escrow_id":     escrowID,
+		"current_count": 1,
+		"required":      2,
+		"signers":       []string{"arb-001"},
+	})
+}
+
+func (s *Server) handleEscrowResolve(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	
+	var req struct {
+		EscrowID   string            `json:"escrow_id"`
+		Winner     string            `json:"winner"`
+		Signatures map[string]string `json:"signatures"`
+	}
+	if err := parseBody(r, &req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	
+	if req.EscrowID == "" || req.Winner == "" {
+		s.writeError(w, http.StatusBadRequest, "escrow_id and winner required")
+		return
+	}
+	
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"resolved":  true,
+		"winner":    req.Winner,
+		"amount":    1000.0,
+		"escrow_id": req.EscrowID,
 	})
 }

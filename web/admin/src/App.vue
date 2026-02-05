@@ -13,7 +13,12 @@ import {
   SwitchButton,
   User,
   Message,
-  ChatDotRound
+  ChatDotRound,
+  CopyDocument,
+  Edit,
+  Bell,
+  Search,
+  Position
 } from '@element-plus/icons-vue'
 
 const authStore = useAuthStore()
@@ -26,6 +31,11 @@ const menuItems = [
   { index: '/neighbors', title: '邻居管理', icon: User },
   { index: '/mailbox', title: '邮箱', icon: Message },
   { index: '/bulletin', title: '留言板', icon: ChatDotRound },
+  { index: '/tasks', title: '任务管理', icon: CopyDocument },
+  { index: '/voting', title: '投票系统', icon: Edit },
+  { index: '/supernodes', title: '超级节点', icon: Bell },
+  { index: '/audit', title: '审计管理', icon: Search },
+  { index: '/disputes', title: '争议处理', icon: Position },
   { index: '/endpoints', title: 'API 浏览器', icon: Document },
   { index: '/logs', title: '日志查看', icon: List },
   { index: '/about', title: '关于', icon: InfoFilled },
