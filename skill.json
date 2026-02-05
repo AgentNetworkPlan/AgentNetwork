@@ -73,13 +73,6 @@
         "targetDir": "%LOCALAPPDATA%\\Programs",
         "bins": ["agentnetwork.exe"],
         "label": "Download AgentNetwork (Windows)"
-      },
-      {
-        "id": "source",
-        "kind": "go",
-        "package": "github.com/AgentNetworkPlan/AgentNetwork/cmd/node@latest",
-        "bins": ["node"],
-        "label": "Install from source (requires Go 1.21+)"
       }
     ],
     "triggers": [
